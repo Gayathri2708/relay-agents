@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     llm_timeout_s: float = 60.0
     # Extra attempts after the first when the model returns output that fails validation.
     llm_max_retries: int = 2
+    # Caps each reply (reasoning included). Also keeps requests inside per-minute token limits, which
+    # providers like Groq check against prompt + max output.
+    llm_max_output_tokens: int = 3000
 
     # Model routing: a small fast model where the task is classification, a stronger one for reasoning.
     model_triage: str = "openai/gpt-oss-20b"

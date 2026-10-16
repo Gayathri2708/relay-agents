@@ -53,6 +53,8 @@ class QAAgent:
             return problems
 
         findings = investigation.model_dump_json(include={"summary", "likely_cause", "findings"}, indent=2)
+        cited = {c.section for a in plan.actions for c in a.citations}
+        shown = {e.id for e in investigation.evidence if e.defined_sections & cited}
         return structured_call(
             self.llm,
             agent="qa",
@@ -60,7 +62,8 @@ class QAAgent:
             user=(
                 f"Triage:\n{wrap('triage', triage.model_dump_json(indent=2))}\n\n"
                 f"Investigation:\n{wrap('investigation', findings)}\n\n"
-                f"Evidence:\n{render_evidence(investigation.evidence)}\n\n"
+                f"Evidence (runbooks: only the sections the plan cites):\n"
+                f"{render_evidence(investigation.evidence, shown)}\n\n"
                 f"Proposed plan:\n{wrap('plan', plan.model_dump_json(indent=2))}"
             ),
             schema=QAReviewDraft,

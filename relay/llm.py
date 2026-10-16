@@ -62,9 +62,13 @@ class OpenAICompatibleLLM:
         if not settings.llm_api_key:
             raise RuntimeError("LLM_API_KEY is not set (see .env.example).")
         self._client = OpenAI(
-            base_url=settings.llm_base_url, api_key=settings.llm_api_key, timeout=settings.llm_timeout_s
+            base_url=settings.llm_base_url,
+            api_key=settings.llm_api_key,
+            timeout=settings.llm_timeout_s,
+            max_retries=5,  # 429s back off and retry, honouring Retry-After
         )
         self.model = model
+        self._max_tokens = settings.llm_max_output_tokens
         self._price_in, self._price_out = settings.llm_prices.get(model, (0.0, 0.0))
         if model not in settings.llm_prices:
             log.warning("no price configured for %s; its cost will show as 0", model)
@@ -74,6 +78,7 @@ class OpenAICompatibleLLM:
             model=self.model,
             messages=messages,  # type: ignore[arg-type]
             temperature=0,
+            max_tokens=self._max_tokens,
             response_format={"type": "json_object"},
         )
         usage = resp.usage

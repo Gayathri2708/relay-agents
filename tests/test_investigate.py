@@ -27,7 +27,8 @@ def test_checks_dependencies_too(triage):
 def test_follows_runbook_cross_references(triage):
     docpilot = FakeDocPilot()
     evidence = InvestigateAgent(FakeLLM(), docpilot, FakeOps()).gather(triage)
-    assert "[DEP-2]" in docpilot.queries  # PAY-2 says "following [DEP-2]"
+    lookup = next(q for q in docpilot.queries if q.startswith("DEP-2 "))  # PAY-2 says "following [DEP-2]"
+    assert "previous release" in lookup  # searched with the referencing sentence, not the bare id
     assert "DEP-2" in {sid for e in evidence for sid in e.defined_sections}
 
 

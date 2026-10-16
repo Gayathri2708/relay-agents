@@ -67,8 +67,8 @@ class FakeDocPilot:
         self.queries.append(query)
         if self.fail_search:
             raise DocPilotError("DocPilot unreachable")
-        if re.fullmatch(r"\[[A-Z]+-\d+\]", query):  # section lookups made by reference expansion
-            return [h for h in self.chunks if query in h.content][:top_k]
+        if m := re.match(r"([A-Z]+-\d+) ", query):  # section lookups made by reference expansion
+            return [h for h in self.chunks if f"[{m.group(1)}]" in h.content][:top_k]
         words = set(re.findall(r"[a-z0-9-]{3,}", query.lower()))
         scored = sorted(self.chunks, key=lambda h: -len(words & set(re.findall(r"[a-z0-9-]{3,}", h.content.lower()))))
         return scored[:top_k]

@@ -47,9 +47,10 @@ _PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     (
         "mass_action",
         re.compile(
-            r"\b(roll ?back|restart|delete|drop|fail ?over|scale)\b.{0,30}"
-            r"\b(all|every|each)\b.{0,15}\b(services?|databases?|clusters?|deploys?)\b",
-            _F,
+            # [^.\n] keeps the match inside one sentence: "...and rollback\n\nAll services deploy" is not one.
+            r"\b(roll ?back|restart|delete|drop|fail ?over|scale)\b[^.\n]{0,30}"
+            r"\b(all|every|each)\b[^.\n]{0,15}\b(services?|databases?|clusters?|deploys?)\b",
+            re.I,
         ),
     ),
     (

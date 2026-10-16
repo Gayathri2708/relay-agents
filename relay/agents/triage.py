@@ -53,7 +53,10 @@ class TriageAgent:
             if expected and expected != draft.severity:
                 problems.append(f"severity {draft.severity} contradicts policy_section {draft.policy_section}")
             if draft.start_time and draft.start_time > alert.received_at + timedelta(minutes=10):
-                problems.append("start_time is after the alert was received")
+                problems.append(
+                    "start_time is after the alert was received. Copy the start time exactly as the alert states "
+                    "it; if the alert states none, use null. Never estimate a time."
+                )
             return problems
 
         draft = structured_call(
