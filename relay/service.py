@@ -51,7 +51,7 @@ class ActionEdits(BaseModel):
 
 class DecisionRequest(BaseModel):
     decision: Literal["approved", "rejected"]
-    decided_by: str = Field(min_length=1, max_length=100)
+    decided_by: str = Field(default="", max_length=100, description="Ignored when API keys are on")
     note: str | None = Field(default=None, max_length=2000)
     edits: ActionEdits | None = Field(default=None, description="Approve a modified version of the action")
 
@@ -152,8 +152,18 @@ class RunService:
         incident = {
             "alert": record.state.alert.model_dump(mode="json"),
             "triage": record.state.triage.model_dump(mode="json") if record.state.triage else None,
+            # Findings plus where the evidence came from; full runbook text would blow small token budgets.
             "investigation": (
-                record.state.investigation.model_dump(mode="json") if record.state.investigation else None
+                {
+                    **record.state.investigation.model_dump(mode="json", exclude={"evidence"}),
+                    "evidence": [
+                        {"id": e.id, "kind": e.kind, "source": e.source,
+                         "content": e.content[:600] if e.kind != "runbook" else "(runbook section)"}
+                        for e in record.state.investigation.evidence
+                    ],
+                }
+                if record.state.investigation
+                else None
             ),
             "plan": record.state.plan.model_dump(mode="json") if record.state.plan else None,
             "qa": record.state.qa.model_dump(mode="json") if record.state.qa else None,

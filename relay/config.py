@@ -38,6 +38,11 @@ class Settings(BaseSettings):
     qa_max_loops: int = 2
     qa_min_confidence: float = 0.6
 
+    # API keys for the HTTP API, as JSON: {"<name>": {"key": "<secret>", "role": "approver" | "reporter"}}.
+    # reporter: submit alerts and read runs (e.g. the MCP server). approver: also decide, resolve, postmortem.
+    # Empty = no auth, for local development only (a warning is logged at startup).
+    relay_api_keys: dict[str, dict[str, str]] = Field(default_factory=dict)
+
     database_url: str = "postgresql:///relay"
 
     docpilot_url: str = "http://localhost:8000"

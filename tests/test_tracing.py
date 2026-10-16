@@ -84,3 +84,16 @@ def test_postgres_update_does_not_duplicate_spans(alert, pg_store):
     pg_store.update(record.id, state)
     assert len(pg_store.get(record.id).state.trace) == 4
     assert pg_store.get(uuid.uuid4()) is None
+
+
+@needs_db
+def test_postgres_summaries_and_interrupted_runs(alert, pg_store):
+    from relay.service import InlineExecutor, RunService
+
+    done = RunService(happy_agents().pipeline(), pg_store, executor=InlineExecutor()).submit(alert).id
+    stuck = pg_store.create(IncidentState(alert=alert)).id
+    assert pg_store.fail_interrupted() >= 1
+    assert pg_store.get(stuck).state.status == "failed"
+    summary = {s.id: s for s in pg_store.summaries(500)}
+    assert summary[done].severity == "P1" and summary[done].cost_usd > 0
+    assert summary[stuck].status == "failed"

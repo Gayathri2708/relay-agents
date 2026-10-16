@@ -72,8 +72,12 @@
         </div>
       </section>
       <section class="card">
-        <label for="who">Your name (recorded on decisions)</label>
+        <label for="key">API key</label>
+        <input id="key" type="password" placeholder="X-API-Key (leave empty if auth is off)" autocomplete="off">
+        <div style="height:8px"></div>
+        <label for="who">Your name (only used when auth is off)</label>
         <input id="who" type="text" placeholder="e.g. ic-on-call" autocomplete="off">
+        <div class="meta" id="whoami"></div>
       </section>
       <section class="card">
         <h2>Runs</h2>
@@ -96,8 +100,11 @@ const money = (x) => "$" + Number(x || 0).toFixed(5);
 const STAGES = ["triage", "investigate", "plan", "qa"];
 let current = null, pollTimer = null;
 
+function apiKey() { return $("#key").value.trim(); }
 async function api(path, opts = {}) {
-  const res = await fetch(path, {headers: {"content-type": "application/json"}, ...opts});
+  const headers = {"content-type": "application/json"};
+  if (apiKey()) headers["X-API-Key"] = apiKey();
+  const res = await fetch(path, {headers, ...opts});
   const body = res.headers.get("content-type")?.includes("json") ? await res.json() : await res.text();
   if (!res.ok) {
     const d = body?.detail;
@@ -106,15 +113,27 @@ async function api(path, opts = {}) {
   return body;
 }
 
+let principal = null;
 function who() {
   const name = $("#who").value.trim();
   try { localStorage.setItem("relay-who", name); } catch {}
-  return name;
+  return principal?.auth ? principal.name : name;
 }
+async function loadMe() {
+  try { localStorage.setItem("relay-key", apiKey()); } catch {}
+  try {
+    principal = await api("/me");
+    $("#whoami").textContent = principal.auth ? `Signed in as ${principal.name} (${principal.role})` : "Auth is off (development mode).";
+    $("#who").disabled = principal.auth;
+    return true;
+  } catch (e) { principal = null; $("#whoami").textContent = e.message; return false; }
+}
+$("#key").onchange = async () => { if (await loadMe()) { loadSamples(); loadRuns(); } };
 
 // --- samples, submit, runs list ----------------------------------------------------------------
 async function loadSamples() {
   const samples = await api("/samples");
+  $("#sample").length = 1;
   for (const s of samples) {
     const opt = document.createElement("option");
     opt.value = s.text; opt.textContent = s.name;
@@ -367,9 +386,8 @@ function markdown(md) {
   return out + (inList ? "</ul>" : "");
 }
 
-try { $("#who").value = localStorage.getItem("relay-who") || ""; } catch {}
-loadSamples();
-loadRuns();
+try { $("#who").value = localStorage.getItem("relay-who") || ""; $("#key").value = localStorage.getItem("relay-key") || ""; } catch {}
+loadMe().then((ok) => { if (ok) { loadSamples(); loadRuns(); } });
 </script>
 </body>
 </html>

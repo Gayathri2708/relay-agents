@@ -140,3 +140,77 @@ def test_failed_run_has_nothing_to_approve():
         run = submit(client)
         assert run["state"]["status"] == "failed"
         assert decide(client, run, "A1", decision="approved").status_code == 409
+
+
+# --- auth ----------------------------------------------------------------------------------------
+
+KEYS = {
+    "gayathri": {"key": "approver-key-0123456789", "role": "approver"},
+    "claude-desktop": {"key": "reporter-key-0123456789", "role": "reporter"},
+}
+
+
+@pytest.fixture
+def secured():
+    service = RunService(happy_agents().pipeline(), InMemoryRunStore(), PostmortemAgent(FakeLLM()),
+                         executor=InlineExecutor())
+    with TestClient(create_app(service, api_keys=KEYS)) as c:
+        yield c
+
+
+def as_(key):
+    return {"X-API-Key": KEYS[key]["key"]}
+
+
+def test_keys_are_required_when_configured(secured):
+    assert secured.get("/incidents").status_code == 401
+    assert secured.get("/incidents", headers={"X-API-Key": "wrong-key-0123456789"}).status_code == 401
+    assert secured.get("/health").status_code == 200 and secured.get("/").status_code == 200
+
+
+def test_reporter_can_submit_and_read_but_not_decide(secured):
+    run = secured.post("/incidents", json={"alert": ALERT}, headers=as_("claude-desktop")).json()
+    assert secured.get(f"/incidents/{run['id']}", headers=as_("claude-desktop")).status_code == 200
+    url = f"/incidents/{run['id']}/actions/A1/decision"
+    resp = secured.post(url, json={"decision": "approved"}, headers=as_("claude-desktop"))
+    assert resp.status_code == 403
+    assert secured.post(f"/incidents/{run['id']}/resolve", json={}, headers=as_("claude-desktop")).status_code == 403
+
+
+def test_decider_identity_comes_from_the_key_not_the_body(secured):
+    run = secured.post("/incidents", json={"alert": ALERT}, headers=as_("gayathri")).json()
+    url = f"/incidents/{run['id']}/actions/A1/decision"
+    body = secured.post(url, json={"decision": "approved", "decided_by": "someone-else"}, headers=as_("gayathri"))
+    assert body.status_code == 201 and body.json()["decided_by"] == "gayathri"
+    assert secured.get("/me", headers=as_("gayathri")).json() == {"name": "gayathri", "role": "approver", "auth": True}
+
+
+def test_open_mode_still_needs_a_name(client):
+    run = submit(client)
+    resp = client.post(f"/incidents/{run['id']}/actions/A1/decision", json={"decision": "approved"})
+    assert resp.status_code == 422
+
+
+def test_weak_or_misconfigured_keys_are_rejected():
+    from relay.auth import KeyRing
+
+    with pytest.raises(ValueError, match="16 characters"):
+        KeyRing({"x": {"key": "short", "role": "approver"}})
+    with pytest.raises(ValueError, match="unknown role"):
+        KeyRing({"x": {"key": "a" * 20, "role": "admin"}})
+
+
+def test_oversized_alert_is_rejected(client):
+    assert client.post("/incidents", json={"alert": "x" * 8_001}).status_code == 422
+
+
+def test_runs_interrupted_by_a_restart_are_failed_on_startup():
+    from relay.graph import IncidentState
+    from relay.schemas import Alert
+
+    store = InMemoryRunStore()
+    stuck = store.create(IncidentState(alert=Alert.from_raw("x")))  # status "running", nobody working on it
+    service = RunService(happy_agents().pipeline(), store, executor=InlineExecutor())
+    with TestClient(create_app(service)) as c:
+        state = c.get(f"/incidents/{stuck.id}").json()["state"]
+    assert state["status"] == "failed" and "restarted" in state["error"]

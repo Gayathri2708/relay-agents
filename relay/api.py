@@ -4,36 +4,32 @@ Humans approve, edit or reject proposed actions. Approval runs the mock executor
 There is no code path that executes an action.
 """
 
+import logging
 import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
+from .auth import KeyRing, Principal, requires
 from .schemas import Alert
 from .service import Conflict, DecisionRequest, Invalid, NotFound, RunService
-from .store import AlreadyDecided, Decision, Postmortem, Resolution, RunRecord
+from .store import AlreadyDecided, Decision, Postmortem, Resolution, RunRecord, RunSummary
 from .tracing import AgentUsage
+
+log = logging.getLogger(__name__)
 
 STATIC = Path(__file__).with_name("static")
 SAMPLES = Path(__file__).parent.parent / "seed" / "alerts"
 
 
 class AlertIn(BaseModel):
-    alert: str = Field(min_length=1, max_length=20_000, description="Raw alert text; redacted before use")
+    # 8,000 characters is about 2,300 tokens: room for the policy and schema within small per-minute limits.
+    alert: str = Field(min_length=1, max_length=8_000, description="Raw alert text; redacted before use")
     received_at: datetime | None = None
-
-
-class RunSummary(BaseModel):
-    id: uuid.UUID
-    created_at: datetime
-    status: str
-    service: str | None
-    severity: str | None
-    cost_usd: float
 
 
 class Sample(BaseModel):
@@ -41,7 +37,9 @@ class Sample(BaseModel):
     text: str
 
 
-def create_app(service: RunService | None = None) -> FastAPI:
+def create_app(service: RunService | None = None, api_keys: dict[str, dict[str, str]] | None = None) -> FastAPI:
+    """Pass `service` (and optionally `api_keys`) in tests; otherwise both come from settings at startup."""
+
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         pool = None
@@ -61,8 +59,12 @@ def create_app(service: RunService | None = None) -> FastAPI:
             app.state.service = RunService(
                 Pipeline.from_settings(settings, PostgresOps(pool)), PostgresRunStore(pool), postmortem
             )
+            app.state.keys = KeyRing(settings.relay_api_keys if api_keys is None else api_keys)
         else:
             app.state.service = service
+            app.state.keys = KeyRing(api_keys or {})
+        if interrupted := app.state.service.store.fail_interrupted():
+            log.warning("marked %d interrupted run(s) as failed", interrupted)
         yield
         if pool is not None:
             pool.close()
@@ -71,6 +73,17 @@ def create_app(service: RunService | None = None) -> FastAPI:
 
     def svc() -> RunService:
         return app.state.service
+
+    reporter = Depends(requires(lambda: app.state.keys, "reporter"))
+    approver = Depends(requires(lambda: app.state.keys, "approver"))
+
+    def as_principal(principal: Principal, claimed: str) -> str:
+        """With keys on, the key decides who acted; the free-text name is only used in open dev mode."""
+        if principal.authenticated:
+            return principal.name
+        if not claimed.strip():
+            raise HTTPException(422, "Say who you are (decided_by / resolved_by), or configure RELAY_API_KEYS.")
+        return claimed.strip()
 
     def guard(fn, *args):
         try:
@@ -93,45 +106,41 @@ def create_app(service: RunService | None = None) -> FastAPI:
     def health() -> dict:
         return {"status": "ok"}
 
-    @app.get("/samples")
+    @app.get("/samples", dependencies=[reporter])
     def samples() -> list[Sample]:
         return [Sample(name=p.stem, text=p.read_text()) for p in sorted(SAMPLES.glob("*.txt"))]
 
-    @app.post("/incidents", status_code=202)
+    @app.get("/me")
+    def me(principal: Principal = reporter) -> dict:
+        return {"name": principal.name, "role": principal.role, "auth": principal.authenticated}
+
+    @app.post("/incidents", status_code=202, dependencies=[reporter])
     def submit(body: AlertIn) -> RunRecord:
         return svc().submit(Alert.from_raw(body.alert, body.received_at))
 
-    @app.get("/incidents")
+    @app.get("/incidents", dependencies=[reporter])
     def list_runs(limit: int = 50) -> list[RunSummary]:
-        return [
-            RunSummary(
-                id=r.id,
-                created_at=r.created_at,
-                status=r.state.status,
-                service=r.state.triage.service if r.state.triage else None,
-                severity=r.state.triage.severity if r.state.triage else None,
-                cost_usd=round(sum(u.cost_usd for u in r.usage), 6),
-            )
-            for r in svc().store.recent(min(limit, 200))
-        ]
+        return svc().store.summaries(max(1, min(limit, 200)))
 
-    @app.get("/incidents/{run_id}")
+    @app.get("/incidents/{run_id}", dependencies=[reporter])
     def get_incident(run_id: uuid.UUID) -> RunRecord:
         return guard(svc().get, run_id)
 
     @app.post("/incidents/{run_id}/actions/{action_id}/decision", status_code=201)
-    def decide(run_id: uuid.UUID, action_id: str, body: DecisionRequest) -> Decision:
+    def decide(run_id: uuid.UUID, action_id: str, body: DecisionRequest, principal: Principal = approver) -> Decision:
+        body = body.model_copy(update={"decided_by": as_principal(principal, body.decided_by)})
         return guard(svc().decide, run_id, action_id, body)
 
     @app.post("/incidents/{run_id}/resolve")
-    def resolve(run_id: uuid.UUID, body: Resolution) -> RunRecord:
+    def resolve(run_id: uuid.UUID, body: Resolution, principal: Principal = approver) -> RunRecord:
+        body = body.model_copy(update={"resolved_by": as_principal(principal, body.resolved_by)})
         return guard(svc().resolve, run_id, body)
 
-    @app.post("/incidents/{run_id}/postmortem", status_code=201)
+    @app.post("/incidents/{run_id}/postmortem", status_code=201, dependencies=[approver])
     def postmortem(run_id: uuid.UUID) -> Postmortem:
         return guard(svc().draft_postmortem, run_id)
 
-    @app.get("/usage")
+    @app.get("/usage", dependencies=[reporter])
     def usage() -> list[AgentUsage]:
         """Tokens, cost and latency per agent across all runs."""
         return svc().store.usage()

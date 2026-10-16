@@ -29,7 +29,7 @@ class Decision(BaseModel):
 
 
 class Resolution(BaseModel):
-    resolved_by: str = Field(min_length=1, max_length=100)
+    resolved_by: str = Field(default="", max_length=100, description="Ignored when API keys are on")
     note: str = Field(default="", max_length=4000)
     resolved_at: datetime = Field(default_factory=_now)
 
@@ -55,6 +55,18 @@ class RunRecord(BaseModel):
         return summarize(self.state.trace)
 
 
+class RunSummary(BaseModel):
+    id: uuid.UUID
+    created_at: datetime
+    status: str
+    service: str | None
+    severity: str | None
+    cost_usd: float
+
+
+INTERRUPTED = "interrupted: Relay restarted while this run was in progress; submit the alert again"
+
+
 class AlreadyDecided(Exception):
     pass
 
@@ -64,6 +76,8 @@ class RunStore(Protocol):
     def update(self, run_id: uuid.UUID, state: IncidentState) -> None: ...
     def get(self, run_id: uuid.UUID) -> RunRecord | None: ...
     def recent(self, limit: int = 50) -> list[RunRecord]: ...
+    def summaries(self, limit: int = 50) -> list[RunSummary]: ...
+    def fail_interrupted(self) -> int: ...
     def decide(self, run_id: uuid.UUID, decision: Decision) -> Decision: ...
     def resolve(self, run_id: uuid.UUID, state: IncidentState, resolution: Resolution) -> None: ...
     def save_postmortem(self, run_id: uuid.UUID, postmortem: Postmortem, span: Span) -> None: ...
@@ -89,6 +103,23 @@ class InMemoryRunStore:
 
     def recent(self, limit: int = 50) -> list[RunRecord]:
         return sorted(self._runs.values(), key=lambda r: r.created_at, reverse=True)[:limit]
+
+    def summaries(self, limit: int = 50) -> list[RunSummary]:
+        return [
+            RunSummary(
+                id=r.id, created_at=r.created_at, status=r.state.status,
+                service=r.state.triage.service if r.state.triage else None,
+                severity=r.state.triage.severity if r.state.triage else None,
+                cost_usd=round(sum(u.cost_usd for u in r.usage), 6),
+            )
+            for r in self.recent(limit)
+        ]
+
+    def fail_interrupted(self) -> int:
+        stuck = [r for r in self._runs.values() if r.state.status == "running"]
+        for r in stuck:
+            r.state.status, r.state.error = "failed", INTERRUPTED
+        return len(stuck)
 
     def decide(self, run_id: uuid.UUID, decision: Decision) -> Decision:
         record = self._runs[run_id]
@@ -186,6 +217,29 @@ class PostgresRunStore:
         with self._pool.connection() as conn:
             rows = conn.execute("SELECT * FROM runs ORDER BY created_at DESC LIMIT %s", (limit,)).fetchall()
             return [self._record(conn, r) for r in rows]
+
+    def summaries(self, limit: int = 50) -> list[RunSummary]:
+        """One cheap query for the runs list, instead of loading every run's full trace."""
+        with self._pool.connection() as conn:
+            rows = conn.execute(
+                "SELECT r.id, r.created_at, r.status, r.state->'triage'->>'service' AS service,"
+                " r.state->'triage'->>'severity' AS severity,"
+                " coalesce((SELECT sum(t.cost_usd) FROM agent_traces t WHERE t.run_id = r.id), 0)::float AS cost_usd"
+                " FROM runs r ORDER BY r.created_at DESC LIMIT %s",
+                (limit,),
+            ).fetchall()
+        return [RunSummary.model_validate(r) for r in rows]
+
+    def fail_interrupted(self) -> int:
+        """Runs live in an in-process thread pool; after a restart, 'running' rows would never finish."""
+        with self._pool.connection() as conn:
+            cur = conn.execute(
+                "UPDATE runs SET status = 'failed', updated_at = now(),"
+                " state = jsonb_set(jsonb_set(state, '{status}', '\"failed\"'), '{error}', to_jsonb(%s::text))"
+                " WHERE status = 'running'",
+                (INTERRUPTED,),
+            )
+            return cur.rowcount
 
     def decide(self, run_id: uuid.UUID, decision: Decision) -> Decision:
         with self._pool.connection() as conn:
