@@ -42,6 +42,16 @@ _MUTATION = re.compile(
     re.I,
 )
 _READ_ONLY_KINDS = {"page_team", "investigate_further"}
+# A mention is not a command: "watch errors after the rollback", "confirm the failover worked".
+_MENTION = re.compile(r"\b(after|before|following|once|until|since|whether|if|the|a|any|of|post)\s*-?\s*$", re.I)
+
+
+def performed_change(text: str) -> str | None:
+    """The first mutation verb used as an instruction (not merely mentioned), if any."""
+    for m in _MUTATION.finditer(text):
+        if not _MENTION.search(text[max(0, m.start() - 15) : m.start()]):
+            return m.group(0)
+    return None
 
 # Internal names a public status update must not mention (COMM-1). "checkout" is not here: customers
 # see a checkout too, and the runbook's own template talks about purchases.
@@ -76,9 +86,9 @@ class PlanAgent:
                         problems.append(
                             f"actions[{i}] cites {c.section} in {c.runbook}, but it is in {citable[c.section]}"
                         )
-                if action.kind in _READ_ONLY_KINDS and (verb := _MUTATION.search(f"{action.title} {action.details}")):
+                if action.kind in _READ_ONLY_KINDS and (verb := performed_change(f"{action.title}. {action.details}")):
                     problems.append(
-                        f"actions[{i}] is {action.kind} but would change production ({verb.group(0)!r}); "
+                        f"actions[{i}] is {action.kind} but would change production ({verb!r}); "
                         "use a change kind such as rollback, config_change or terminate_query, or split it"
                     )
                 leaked = sorted({m.lower() for m in _INTERNAL_NAMES.findall(action.status_update_draft or "")})

@@ -125,3 +125,19 @@ def test_read_only_kind_may_observe(triage, investigation):
     llm = FakeLLM(reply)
     PlanAgent(llm).run(triage, investigation)
     assert len(llm.calls) == 1
+
+
+@pytest.mark.parametrize(
+    ("text", "flagged"),
+    [
+        ("Roll back payments-api to v2.40.3.", "Roll back"),
+        ("Check the dashboards, then terminate the export query.", "terminate"),
+        ("Monitor the error rate after the rollback completes.", None),
+        ("Confirm the failover worked and lag is under 10s.", None),
+        ("Verify whether a restart is needed.", None),
+    ],
+)
+def test_mentions_of_a_change_are_not_changes(text, flagged):
+    from relay.agents.plan import performed_change
+
+    assert performed_change(text) == flagged
