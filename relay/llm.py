@@ -13,7 +13,9 @@ Every attempt (messages, reply, tokens, cost, latency, rejection reasons) is rec
 import json
 import logging
 import re
+import threading
 import time
+from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Protocol
@@ -53,10 +55,56 @@ class AgentOutputError(Exception):
         super().__init__(f"{agent} output invalid after {attempts} attempt(s): " + "; ".join(problems))
 
 
+class DailyLimitReached(Exception):
+    """The provider's per-day quota is used up. Retrying today will not help."""
+
+
+class Pacer:
+    """Keeps one model's requests inside per-minute token and request limits (sliding 60 s window).
+
+    Each request reserves an estimate before it is sent and is settled with the real usage afterwards,
+    so callers wait instead of being rejected with 429/413. Thread-safe; one pacer per model.
+    """
+
+    WINDOW_S = 60.0
+
+    def __init__(self, tpm: int, rpm: int = 0, clock: Callable[[], float] = time.monotonic, sleep=time.sleep):
+        self.tpm, self.rpm, self._clock, self._sleep = tpm, rpm, clock, sleep
+        self._events: deque[list[float]] = deque()  # [timestamp, tokens]
+        self._lock = threading.Lock()
+        self.waited_s = 0.0
+
+    def acquire(self, tokens: int) -> list[float]:
+        while True:
+            with self._lock:
+                now = self._clock()
+                while self._events and now - self._events[0][0] >= self.WINDOW_S:
+                    self._events.popleft()
+                used = sum(e[1] for e in self._events)
+                fits_tokens = not self.tpm or not self._events or used + tokens <= self.tpm
+                fits_requests = not self.rpm or len(self._events) < self.rpm
+                if fits_tokens and fits_requests:
+                    entry = [now, float(tokens)]
+                    self._events.append(entry)
+                    return entry
+                wait = self.WINDOW_S - (now - self._events[0][0]) + 0.05
+            self.waited_s += wait
+            self._sleep(wait)
+
+    def settle(self, entry: list[float], actual_tokens: int) -> None:
+        with self._lock:
+            entry[1] = float(actual_tokens)
+
+
+def estimate_tokens(messages: list[Message], max_output: int) -> int:
+    """Rough request size as rate limiters count it: prompt (about 3.5 chars per token) plus max output."""
+    return int(sum(len(m["content"]) for m in messages) / 3.5) + max_output
+
+
 class OpenAICompatibleLLM:
     """One model on any OpenAI-compatible chat completions endpoint (Groq, OpenAI, vLLM, Ollama, ...)."""
 
-    def __init__(self, settings: Settings, model: str):
+    def __init__(self, settings: Settings, model: str, pacer: Pacer | None = None):
         from openai import OpenAI
 
         if not settings.llm_api_key:
@@ -65,24 +113,36 @@ class OpenAICompatibleLLM:
             base_url=settings.llm_base_url,
             api_key=settings.llm_api_key,
             timeout=settings.llm_timeout_s,
-            max_retries=5,  # 429s back off and retry, honouring Retry-After
+            max_retries=3,  # 429s back off and retry, honouring Retry-After
         )
         self.model = model
+        self.pacer = pacer
         self._max_tokens = settings.llm_max_output_tokens
         self._price_in, self._price_out = settings.llm_prices.get(model, (0.0, 0.0))
         if model not in settings.llm_prices:
             log.warning("no price configured for %s; its cost will show as 0", model)
 
     def chat(self, messages: list[Message]) -> Completion:
-        resp = self._client.chat.completions.create(
-            model=self.model,
-            messages=messages,  # type: ignore[arg-type]
-            temperature=0,
-            max_tokens=self._max_tokens,
-            response_format={"type": "json_object"},
-        )
+        from openai import RateLimitError
+
+        estimate = estimate_tokens(messages, self._max_tokens)
+        entry = self.pacer.acquire(estimate) if self.pacer else None
+        try:
+            resp = self._client.chat.completions.create(
+                model=self.model,
+                messages=messages,  # type: ignore[arg-type]
+                temperature=0,
+                max_tokens=self._max_tokens,
+                response_format={"type": "json_object"},
+            )
+        except RateLimitError as exc:
+            if re.search(r"per day|\bTPD\b|\bRPD\b", str(exc), re.I):
+                raise DailyLimitReached(f"{self.model}: {exc}") from exc
+            raise
         usage = resp.usage
         p_in, p_out = (usage.prompt_tokens, usage.completion_tokens) if usage else (0, 0)
+        if entry is not None:
+            self.pacer.settle(entry, p_in + p_out)
         return Completion(
             text=resp.choices[0].message.content or "",
             model=self.model,
@@ -102,8 +162,15 @@ class ModelRouter:
     def for_agent(self, agent: str) -> OpenAICompatibleLLM:
         model = self._settings.model_for(agent)
         if model not in self._clients:
-            self._clients[model] = OpenAICompatibleLLM(self._settings, model)
+            s = self._settings
+            # Providers like Groq limit each model separately, so each model gets its own pacer.
+            pacer = Pacer(s.llm_tpm, s.llm_rpm) if (s.llm_tpm or s.llm_rpm) else None
+            self._clients[model] = OpenAICompatibleLLM(s, model, pacer)
         return self._clients[model]
+
+    @property
+    def pacing_wait_s(self) -> float:
+        return sum(c.pacer.waited_s for c in self._clients.values() if c.pacer)
 
 
 _FENCE = re.compile(r"```(?:json)?\s*(.*?)```", re.S)

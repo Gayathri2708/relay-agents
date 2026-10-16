@@ -138,6 +138,6 @@ def test_read_only_kind_may_observe(triage, investigation):
     ],
 )
 def test_mentions_of_a_change_are_not_changes(text, flagged):
-    from relay.agents.plan import performed_change
+    from relay.grounding import change_verb
 
-    assert performed_change(text) == flagged
+    assert change_verb(text) == flagged

@@ -21,6 +21,10 @@ class Settings(BaseSettings):
     # Caps each reply (reasoning included). Also keeps requests inside per-minute token limits, which
     # providers like Groq check against prompt + max output.
     llm_max_output_tokens: int = 3000
+    # Client-side pacing per model (0 = off). Set to your provider's per-minute limits, e.g. Groq's free
+    # tier: LLM_TPM=8000, LLM_RPM=30. Requests then wait for room instead of failing with 429/413.
+    llm_tpm: int = 0
+    llm_rpm: int = 0
 
     # Model routing: a small fast model where the task is classification, a stronger one for reasoning.
     model_triage: str = "openai/gpt-oss-20b"

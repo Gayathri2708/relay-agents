@@ -84,6 +84,19 @@ def test_edited_action_must_still_be_grounded(client):
     assert body["edited_action"]["requires_approval"] is True
 
 
+@pytest.mark.parametrize(
+    ("action", "edits", "expected"),
+    [
+        ("A2", {"details": "Page team payments, then restart payments-api."}, "would change production"),
+        ("A3", {"status_update_draft": "payments-api is failing after a deploy. Next update 15:00 UTC."}, "internal"),
+    ],
+)
+def test_edits_get_the_same_plan_rules(client, action, edits, expected):
+    run = submit(client)
+    resp = decide(client, run, action, decision="approved", edits=edits)
+    assert resp.status_code == 422 and expected in str(resp.json()["detail"]["problems"])
+
+
 def test_blocked_action_cannot_be_approved_as_is():
     from .conftest import INVESTIGATION_REPLY, QA_PASS, TRIAGE_REPLY, Agents
     from .test_graph import INVENTED

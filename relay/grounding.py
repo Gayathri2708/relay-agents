@@ -6,7 +6,9 @@ An action passes only if everything concrete in it can be found in what Relay ac
   - every feature flag name, release version and replica count appears in the evidence,
   - a change action targets exactly one service that is in scope for this incident,
   - a rollback targets a service with a deploy in the evidence,
-  - nothing asks for a mass action ("restart all services").
+  - nothing asks for a mass action ("restart all services"),
+  - a read-only action (page_team, investigate_further) does not hide a production change,
+  - a public status update names no internal systems.
 These rules are also the structural defence against prompt injection: obeying an injected instruction
 still cannot yield an action that passes them.
 """
@@ -24,6 +26,45 @@ _CLI = re.compile(
 _FLAG = re.compile(r"\b[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*){2,}\b")
 _VERSION = re.compile(r"\bv\d+\.\d+\.\d+\b")
 _REPLICAS = re.compile(r"\b(\d+)\s+replicas?\b", re.I)
+
+
+# Wording that means an action changes production, which a read-only kind must not hide.
+_MUTATION = re.compile(
+    r"\b(roll(?:ing)?[ -]?back|revert|redeploy|deploy (?:the|a) fix|scale (?:up|out|down|to)|"
+    r"restart|reboot|fail ?over|terminate|kill|"
+    r"cancel(?:l?ing)? the|drop|delete|truncate|disable|enable|toggle|re-?publish|rotate|set the flag|"
+    r"raise max_connections)\b",
+    re.I,
+)
+_READ_ONLY_KINDS = {"page_team", "investigate_further"}
+# A mention is not a command: "watch errors after the rollback", "confirm the failover worked".
+_MENTION = re.compile(r"\b(after|before|following|once|until|since|whether|if|the|a|any|of|post)\s*-?\s*$", re.I)
+
+
+def change_verb(text: str) -> str | None:
+    """The first mutation verb used as an instruction (not merely mentioned), if any."""
+    for m in _MUTATION.finditer(text):
+        if not _MENTION.search(text[max(0, m.start() - 15) : m.start()]):
+            return m.group(0)
+    return None
+
+# Internal names a public status update must not mention (COMM-1). "checkout" is not here: customers
+# see a checkout too, and the runbook's own template talks about purchases.
+_INTERNAL_NAMES = re.compile(
+    r"\b(payments-api|auth-service|orders-db(?:-\d)?|patroni|argo(?: cd)?|pagerduty|jwks)\b", re.I
+)
+
+
+def performed_change(action: ActionDraft) -> str | None:
+    """For a read-only kind (page_team, investigate_further), a production change hidden in its text."""
+    return change_verb(f"{action.title}. {action.details}") if action.kind in _READ_ONLY_KINDS else None
+
+
+def internal_names(action: ActionDraft) -> list[str]:
+    """Internal system names in a status update's public text (policy COMM-1 forbids them)."""
+    if action.kind != "status_update":
+        return []
+    return sorted({m.lower() for m in _INTERNAL_NAMES.findall(action.status_update_draft or "")})
 
 
 def in_scope_services(triage: TriageResult) -> set[str]:
@@ -62,6 +103,11 @@ def check_action(action: ActionDraft, label: str, triage: TriageResult, investig
     for count in set(_REPLICAS.findall(text)):
         if not re.search(rf"\b{count}\s+replicas?\b|\bto {count}\b", evidence):
             problems.append(f"{label} uses a replica count of {count}, which no runbook or evidence gives")
+
+    if verb := performed_change(action):
+        problems.append(f"{label} is {action.kind} but would change production ({verb!r})")
+    if leaked := internal_names(action):
+        problems.append(f"{label} status update names internal systems {leaked}")
 
     if action.kind in RISKY_KINDS:
         scope = in_scope_services(triage)
