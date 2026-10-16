@@ -1,0 +1,6 @@
+[FIRING:1] CheckoutHighLatency (prod-us-east-1)
+service: checkout
+startsAt: 2026-10-15T19:30:00Z
+summary: checkout p99 latency 4.2s (threshold 3s) for 10 minutes, CPU 93%
+description: place-order requests timing out for some customers during the Autumn flash sale. Error rate 1.1%.
+labels: team=storefront env=prod severity=page

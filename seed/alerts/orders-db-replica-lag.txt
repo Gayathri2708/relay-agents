@@ -1,0 +1,7 @@
+[FIRING:1] PostgresReplicationLagHigh (prod-us-east-1)
+service: orders-db
+instance: orders-db-2
+startsAt: 2026-10-12T09:10:00Z
+summary: replication lag 95s on orders-db-2 (threshold 60s)
+description: order-history reads may be stale. Primary orders-db-1 healthy.
+labels: team=data-platform env=prod severity=warning

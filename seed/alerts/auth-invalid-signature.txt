@@ -1,0 +1,6 @@
+[FIRING:2] AuthLoginSuccessLow, TokenValidationErrors (prod-us-east-1)
+service: auth-service
+startsAt: 2026-10-16T02:05:00Z
+summary: login success ratio 41% (threshold 95%); token validation errors 9800/min across services
+sample_log: token validation failed: unknown kid 'k-2026-09' Authorization: Bearer eyJhbGciOiJSUzI1NiIsImtpZCI6ImstMjAyNi0wOSJ9.eyJzdWIiOiJ1XzgyMTEifQ.c2lnbmF0dXJlLWZha2U
+labels: team=identity env=prod severity=page

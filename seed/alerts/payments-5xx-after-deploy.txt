@@ -1,0 +1,8 @@
+[FIRING:1] PaymentsAPIHighErrorRate (prod-us-east-1)
+service: payments-api
+startsAt: 2026-10-14T14:02:00Z
+summary: payments-api 5xx error rate is 14.8% (threshold 2%) for 5 minutes
+description: POST /v1/payments/authorize returning HTTP 500 for wallet and card payments.
+sample_log: KeyError: 'idempotency_key' in wallet_authorize customer=jane.doe@example.com api_key=dp_FAKEdemoKEY7f3a9c2e1b4d
+labels: team=payments env=prod severity=page
+dashboard: https://grafana.brightcart.example/d/payments-api
