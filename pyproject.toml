@@ -24,6 +24,8 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools]
 packages = ["relay", "relay.agents", "relay.tools"]
 
+# evals/ and seed/ run from a checkout (python -m evals.run); they are not part of the installed package.
+
 [tool.setuptools.package-data]
 relay = ["schema.sql", "static/*.html"]
 
@@ -36,6 +38,7 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 
 [tool.ruff.lint.per-file-ignores]
 "seed/seed_db.py" = ["E501"]  # fixture tables read better unwrapped
+"evals/build_dataset.py" = ["E501"]  # labelled incident tables, same reason
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
