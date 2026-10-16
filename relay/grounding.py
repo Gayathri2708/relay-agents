@@ -18,11 +18,27 @@ import re
 from .schemas import DEPENDENCIES, RISKY_KINDS, ActionDraft, Investigation, ResponsePlan, TriageResult
 from .untrusted import scan
 
+# Ops CLIs that are never ordinary words: always treated as commands.
 _CLI = re.compile(
-    r"\b(argocd|patronictl|kubectl|helm|psql|pg_ctl|terraform|aws|gcloud|az|ssh|systemctl|docker|curl|redis-cli)"
+    r"\b(argocd|patronictl|kubectl|helm|psql|pg_ctl|terraform|systemctl|redis-cli)"
     r"((?:\s+[a-z][a-z0-9_-]*){0,2})",
     re.I,
 )
+# Tools whose names are also prose ("an AWS outage", "the Docker image"): commands only inside backticks
+# or when followed by a flag.
+_PROSE_CLI = re.compile(
+    r"`(aws|gcloud|az|ssh|docker|curl)((?:\s+[a-z][a-z0-9_-]*){0,2})|"
+    r"\b(aws|gcloud|az|ssh|docker|curl)((?:\s+[a-z][a-z0-9_-]*){0,2})(?=\s+--?[a-z])",
+    re.I,
+)
+
+
+def _commands(text: str):
+    for m in _CLI.finditer(text):
+        yield m.group(1).lower(), " ".join(m.group(0).lower().split())
+    for m in _PROSE_CLI.finditer(text):
+        tool, rest = (m.group(1), m.group(2)) if m.group(1) else (m.group(3), m.group(4))
+        yield tool.lower(), " ".join(f"{tool} {rest or ''}".lower().split())
 _FLAG = re.compile(r"\b[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*){2,}\b")
 _VERSION = re.compile(r"\bv\d+\.\d+\.\d+\b")
 _REPLICAS = re.compile(r"\b(\d+)\s+replicas?\b", re.I)
@@ -86,9 +102,7 @@ def check_action(action: ActionDraft, label: str, triage: TriageResult, investig
         elif citable[c.section] != c.runbook:
             problems.append(f"{label} cites {c.section} in {c.runbook}, but it is in {citable[c.section]}")
 
-    for m in _CLI.finditer(text):
-        command = " ".join(m.group(0).lower().split())
-        tool = m.group(1).lower()
+    for tool, command in _commands(text):
         if tool not in runbooks:
             problems.append(f"{label} uses '{command}', but no retrieved runbook mentions {tool}")
         elif command not in " ".join(runbooks.split()):

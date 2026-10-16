@@ -53,6 +53,19 @@ def test_invented_specifics_are_caught(triage, investigation, details, expected)
     assert llm.calls == []  # rule failures go straight back without paying for a review
 
 
+@pytest.mark.parametrize(
+    ("details", "flagged"),
+    [
+        ("Possible AWS outage in us-east-1; check the Docker image tag.", False),
+        ("Run `aws ec2 reboot-instances` on the payments hosts.", True),
+        ("curl -X POST the admin endpoint to flush caches.", True),
+    ],
+)
+def test_prose_tool_names_are_not_commands(triage, investigation, details, flagged):
+    problems = check_action(make_plan(a1={"details": details}).actions[1], "A2", triage, investigation)
+    assert bool(problems) is flagged
+
+
 def test_specifics_from_runbooks_are_allowed(triage, investigation):
     details = "Per DEP-2 run argocd app rollback payments-api v2.40.3 and watch the error rate."
     assert check_action(make_plan(a0={"details": details}).actions[0], "A1", triage, investigation) == []

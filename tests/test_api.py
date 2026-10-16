@@ -132,6 +132,14 @@ def test_postmortem_only_after_resolution(client):
     assert "postmortem" in {u["agent"] for u in client.get("/usage").json()}
 
 
+def test_postmortem_model_failure_is_a_clean_502():
+    with make_client(postmortem=[{"title": "only a title"}] * 3) as client:
+        run = submit(client)
+        client.post(f"/incidents/{run['id']}/resolve", json={"resolved_by": "ic"})
+        resp = client.post(f"/incidents/{run['id']}/postmortem")
+        assert resp.status_code == 502 and "valid output" in resp.json()["detail"]
+
+
 def test_failed_run_has_nothing_to_approve():
     from .conftest import TRIAGE_REPLY, Agents
 

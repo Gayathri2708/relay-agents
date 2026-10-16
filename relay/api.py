@@ -12,9 +12,11 @@ from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.responses import FileResponse
+from openai import OpenAIError
 from pydantic import BaseModel, Field
 
 from .auth import KeyRing, Principal, requires
+from .llm import AgentOutputError, DailyLimitReached
 from .schemas import Alert
 from .service import Conflict, DecisionRequest, Invalid, NotFound, RunService
 from .store import AlreadyDecided, Decision, Postmortem, Resolution, RunRecord, RunSummary
@@ -55,9 +57,10 @@ def create_app(service: RunService | None = None, api_keys: dict[str, dict[str, 
             settings = get_settings()
             pool = make_pool(settings.database_url)
             apply_schema(pool)
-            postmortem = PostmortemAgent(ModelRouter(settings).for_agent("postmortem"), settings.llm_max_retries)
+            router = ModelRouter(settings)  # one router: each model's pacing covers every agent using it
+            postmortem = PostmortemAgent(router.for_agent("postmortem"), settings.llm_max_retries)
             app.state.service = RunService(
-                Pipeline.from_settings(settings, PostgresOps(pool)), PostgresRunStore(pool), postmortem
+                Pipeline.from_settings(settings, PostgresOps(pool), router), PostgresRunStore(pool), postmortem
             )
             app.state.keys = KeyRing(settings.relay_api_keys if api_keys is None else api_keys)
         else:
@@ -97,6 +100,10 @@ def create_app(service: RunService | None = None, api_keys: dict[str, dict[str, 
         except Invalid as exc:
             detail = {"message": "the edited action fails grounding checks", "problems": exc.problems}
             raise HTTPException(422, detail) from None
+        except AgentOutputError as exc:
+            raise HTTPException(502, f"the model did not produce valid output: {exc}") from None
+        except (DailyLimitReached, OpenAIError) as exc:
+            raise HTTPException(503, f"the LLM provider is unavailable: {exc}") from None
 
     @app.get("/", include_in_schema=False)
     def dashboard() -> FileResponse:

@@ -143,11 +143,12 @@ class Pipeline:
         return state
 
     @classmethod
-    def from_settings(cls, settings, ops) -> "Pipeline":
+    def from_settings(cls, settings, ops, router=None) -> "Pipeline":
+        """Pass `router` to share per-model pacing with other LLM users (e.g. the postmortem agent)."""
         from .llm import ModelRouter
         from .tools.docpilot import DocPilotClient
 
-        router, docpilot = ModelRouter(settings), DocPilotClient.from_settings(settings)
+        router, docpilot = router or ModelRouter(settings), DocPilotClient.from_settings(settings)
         retries = settings.llm_max_retries
         return cls(
             TriageAgent(router.for_agent("triage"), docpilot, retries),
