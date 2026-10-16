@@ -28,7 +28,7 @@ packages = ["relay", "relay.agents", "relay.tools"]
 relay = ["schema.sql"]
 
 [tool.ruff]
-line-length = 110
+line-length = 120
 target-version = "py312"
 
 [tool.ruff.lint]
