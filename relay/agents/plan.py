@@ -4,9 +4,10 @@ Nothing here executes anything. Actions are proposals; risky ones are flagged fo
 ProposedAction contract itself, regardless of what the model returns.
 """
 
+import re
+
 from ..llm import LLM, AgentOutputError, structured_call
 from ..schemas import (
-    KNOWN_SERVICES,
     Investigation,
     PlanDraft,
     ProposedAction,
@@ -29,7 +30,11 @@ Rules:
 - Do not propose actions a runbook forbids (e.g. failing over for slow queries, rolling back during a
   processor outage)."""
 
-_INTERNAL_NAMES = (*KNOWN_SERVICES, "orders-db-1", "orders-db-2", "orders-db-3", "patroni", "argo")
+# Internal names a public status update must not mention (COMM-1). "checkout" is not here: customers
+# see a checkout too, and the runbook's own template talks about purchases.
+_INTERNAL_NAMES = re.compile(
+    r"\b(payments-api|auth-service|orders-db(?:-\d)?|patroni|argo(?: cd)?|pagerduty|jwks)\b", re.I
+)
 
 
 class PlanAgent:
@@ -52,10 +57,9 @@ class PlanAgent:
                         problems.append(
                             f"actions[{i}] cites {c.section} in {c.runbook}, but it is in {citable[c.section]}"
                         )
-                if action.kind == "status_update" and action.status_update_draft:
-                    text = action.status_update_draft.lower()
-                    if leaked := [n for n in _INTERNAL_NAMES if n in text]:
-                        problems.append(f"actions[{i}] status update names internal systems {leaked}")
+                leaked = sorted({m.lower() for m in _INTERNAL_NAMES.findall(action.status_update_draft or "")})
+                if action.kind == "status_update" and leaked:
+                    problems.append(f"actions[{i}] status update names internal systems {leaked}")
             kinds = {a.kind for a in draft.actions}
             if urgent and "page_team" not in kinds:
                 problems.append(f"{triage.severity} incidents need a page_team action")

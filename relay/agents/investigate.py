@@ -5,7 +5,7 @@ an investigation reproducible and auditable, and the model cannot skip a source 
 """
 
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 
 from ..llm import LLM, structured_call
 from ..redact import redact_text
@@ -55,7 +55,7 @@ class _Evidence:
 
 def _offset(ts: datetime, start: datetime) -> str:
     minutes = round((ts - start).total_seconds() / 60)
-    return f"{ts:%Y-%m-%d %H:%M}Z ({minutes:+d} min vs incident start)"
+    return f"{ts.astimezone(UTC):%Y-%m-%d %H:%M}Z ({minutes:+d} min vs incident start)"
 
 
 class InvestigateAgent:

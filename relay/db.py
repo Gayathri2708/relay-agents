@@ -5,7 +5,9 @@ from psycopg_pool import ConnectionPool
 
 
 def make_pool(database_url: str) -> ConnectionPool:
-    return ConnectionPool(database_url, kwargs={"row_factory": dict_row}, min_size=1, max_size=5, open=True)
+    # UTC sessions: timestamps come back in UTC whatever the server or laptop time zone is.
+    kwargs = {"row_factory": dict_row, "options": "-c TimeZone=UTC"}
+    return ConnectionPool(database_url, kwargs=kwargs, min_size=1, max_size=5, open=True)
 
 
 def apply_schema(pool: ConnectionPool) -> None:

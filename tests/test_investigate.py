@@ -1,6 +1,8 @@
+from datetime import UTC, datetime, timedelta, timezone
+
 import pytest
 
-from relay.agents.investigate import InvestigateAgent
+from relay.agents.investigate import InvestigateAgent, _offset
 from relay.llm import AgentOutputError
 from relay.tools.docpilot import DocPilotError
 
@@ -72,3 +74,10 @@ def test_ask_failure_is_not_fatal(triage):
 def test_docpilot_search_failure_is_fatal(triage):
     with pytest.raises(DocPilotError):
         InvestigateAgent(FakeLLM(), FakeDocPilot(fail_search=True), FakeOps()).gather(triage)
+
+
+def test_evidence_times_are_utc_whatever_the_db_session_zone():
+    ist = timezone(timedelta(hours=5, minutes=30))
+    start = datetime(2026, 10, 14, 14, 2, tzinfo=UTC)
+    deploy = datetime(2026, 10, 14, 19, 17, tzinfo=ist)  # 13:47Z, as a local-time session returns it
+    assert _offset(deploy, start) == "2026-10-14 13:47Z (-15 min vs incident start)"

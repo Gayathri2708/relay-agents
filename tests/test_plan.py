@@ -82,6 +82,13 @@ def test_status_update_must_not_name_internal_systems(triage, investigation):
     assert "internal systems" in llm.calls[1][-1]["content"]
 
 
+def test_status_update_may_say_checkout(triage, investigation):
+    ok = plan_with(a2={"status_update_draft": "Some customers cannot complete checkout. Next update 15:00 UTC."})
+    llm = FakeLLM(ok)
+    PlanAgent(llm).run(triage, investigation)
+    assert len(llm.calls) == 1
+
+
 def test_status_update_needs_draft_text(triage, investigation):
     llm = FakeLLM(plan_with(a2={"status_update_draft": None}), PLAN_REPLY)
     PlanAgent(llm).run(triage, investigation)
