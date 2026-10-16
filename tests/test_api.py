@@ -1,94 +1,129 @@
 import pytest
 from fastapi.testclient import TestClient
 
+from relay.agents.postmortem import PostmortemAgent
 from relay.api import create_app
-from relay.graph import IncidentState
-from relay.schemas import ResponsePlan, TriageResult
+from relay.service import InlineExecutor, RunService
 from relay.store import InMemoryRunStore
 
-from .conftest import PLAN_REPLY, TRIAGE_REPLY
+from .conftest import FakeLLM, happy_agents
+
+POSTMORTEM = {
+    "title": "payments-api errors after v2.41.0",
+    "summary": "A deploy broke wallet payments; it was rolled back.",
+    "impact": "About 15% of authorizations failed for 20 minutes.",
+    "timeline": [{"time": "2026-10-14 13:47Z", "event": "v2.41.0 deployed"}],
+    "root_cause": "Idempotency key refactor.",
+    "detection": "Error-rate alert.",
+    "resolution": "Rolled back to v2.40.3.",
+    "what_went_well": ["Fast detection"],
+    "what_went_wrong": ["No canary"],
+    "action_items": [{"owner_team": "payments", "item": "Add a canary for wallet payments"}],
+}
+
+ALERT = "payments-api 5xx 14.8% startsAt: 2026-10-14T14:02:00Z customer=jane.doe@example.com token=abcd1234secret"
 
 
-class StubPipeline:
-    def __init__(self, fail: bool = False):
-        self.fail, self.alerts = fail, []
-
-    def run(self, alert):
-        self.alerts.append(alert)
-        if self.fail:
-            return IncidentState(alert=alert, status="failed", failed_stage="triage", error="boom")
-        actions = [{"id": f"A{i}", **a} for i, a in enumerate(PLAN_REPLY["actions"], 1)]
-        return IncidentState(
-            alert=alert,
-            triage=TriageResult.model_validate(TRIAGE_REPLY),
-            plan=ResponsePlan(summary=PLAN_REPLY["summary"], actions=actions),
-            status="awaiting_approval",
-        )
+def make_client(agents=None, postmortem=()):
+    agents = agents or happy_agents()
+    service = RunService(
+        agents.pipeline(), InMemoryRunStore(), PostmortemAgent(FakeLLM(*postmortem)), executor=InlineExecutor()
+    )
+    return TestClient(create_app(service))
 
 
 @pytest.fixture
-def stub():
-    return StubPipeline()
-
-
-@pytest.fixture
-def client(stub):
-    with TestClient(create_app(stub, InMemoryRunStore())) as c:
+def client():
+    with make_client(postmortem=[POSTMORTEM]) as c:
         yield c
 
 
-def submit(client, text="payments-api 5xx, customer=jane.doe@example.com token=abcd1234secret"):
+def submit(client, text=ALERT):
     resp = client.post("/incidents", json={"alert": text})
-    assert resp.status_code == 201, resp.text
-    return resp.json()
+    assert resp.status_code == 202, resp.text
+    return client.get(f"/incidents/{resp.json()['id']}").json()
 
 
-def test_submit_redacts_before_pipeline_and_storage(client, stub):
+def decide(client, run, action, **body):
+    return client.post(f"/incidents/{run['id']}/actions/{action}/decision", json={"decided_by": "ic", **body})
+
+
+def test_dashboard_and_samples_are_served(client):
+    page = client.get("/")
+    assert page.status_code == 200 and "<title>Relay</title>" in page.text
+    names = {s["name"] for s in client.get("/samples").json()}
+    assert "payments-processor-injection" in names
+
+
+def test_submit_redacts_and_runs_all_agents(client):
     run = submit(client)
-    assert "jane.doe@example.com" not in stub.alerts[0].text
-    assert "abcd1234secret" not in run["state"]["alert"]["text"]
-    assert run["state"]["alert"]["redactions"] == {"email": 1, "secret_assignment": 1}
-    assert run["state"]["plan"]["executed"] is False
+    assert run["state"]["status"] == "awaiting_approval"
+    assert "jane.doe@example.com" not in run["state"]["alert"]["text"]
+    assert [s["agent"] for s in run["state"]["trace"]] == ["triage", "investigate", "plan", "qa"]
+    assert {u["agent"] for u in run["usage"]} == {"triage", "investigate", "plan", "qa"}
+    assert client.get("/incidents").json()[0]["severity"] == "P1"
 
 
-def test_list_and_get(client):
+def test_approval_simulates_and_never_executes(client):
     run = submit(client)
-    listed = client.get("/incidents").json()
-    assert listed[0] == {**listed[0], "id": run["id"], "service": "payments-api", "severity": "P1"}
-    assert client.get(f"/incidents/{run['id']}").json()["id"] == run["id"]
+    decision = decide(client, run, "A1", decision="approved").json()
+    assert decision["simulation"]["simulated"] is True and decision["simulation"]["executed"] is False
+    assert decide(client, run, "A2", decision="rejected").json()["simulation"] is None
+    assert decide(client, run, "A1", decision="rejected").status_code == 409  # decisions are final
+
+
+def test_edited_action_must_still_be_grounded(client):
+    run = submit(client)
+    bad = decide(client, run, "A1", decision="approved", edits={"details": "Run kubectl delete pod --all now."})
+    assert bad.status_code == 422 and "kubectl" in str(bad.json()["detail"]["problems"])
+    good = decide(client, run, "A1", decision="approved",
+                  edits={"details": "Roll back payments-api to v2.40.3 per DEP-2, then watch errors for 10 min."})
+    assert good.status_code == 201
+    body = good.json()
+    assert body["edited_action"]["details"].startswith("Roll back payments-api to v2.40.3")
+    assert body["edited_action"]["requires_approval"] is True
+
+
+def test_blocked_action_cannot_be_approved_as_is():
+    from .conftest import INVESTIGATION_REPLY, QA_PASS, TRIAGE_REPLY, Agents
+    from .test_graph import INVENTED
+
+    agents = Agents([TRIAGE_REPLY], [INVESTIGATION_REPLY], [INVENTED] * 3, [QA_PASS])
+    with make_client(agents) as client:
+        run = submit(client)
+        assert run["state"]["status"] == "escalated"
+        assert decide(client, run, "A1", decision="approved").status_code == 409
+        assert decide(client, run, "A1", decision="rejected").status_code == 201
+        assert decide(client, run, "A2", decision="approved").status_code == 201  # not blocked
+
+
+def test_unknown_run_and_action(client):
+    run = submit(client)
+    assert decide(client, run, "A9", decision="approved").status_code == 404
     assert client.get("/incidents/00000000-0000-0000-0000-000000000000").status_code == 404
 
 
-def test_approving_an_action_only_records_it(client):
+def test_postmortem_only_after_resolution(client):
     run = submit(client)
-    resp = client.post(
-        f"/incidents/{run['id']}/actions/A1/decision", json={"decision": "approved", "decided_by": "ic@oncall"}
-    )
-    assert resp.status_code == 201
-    body = resp.json()
-    assert body["executed"] is False and "never executes" in body["message"]
-    decisions = client.get(f"/incidents/{run['id']}").json()["decisions"]
-    assert [(d["action_id"], d["decision"]) for d in decisions] == [("A1", "approved")]
+    decide(client, run, "A1", decision="approved")
+    assert client.post(f"/incidents/{run['id']}/postmortem").status_code == 409
+    resolved = client.post(f"/incidents/{run['id']}/resolve", json={"resolved_by": "ic", "note": "rolled back"})
+    assert resolved.json()["state"]["status"] == "resolved"
+    assert decide(client, run, "A2", decision="approved").status_code == 409  # closed
 
-
-def test_decisions_are_final(client):
-    run = submit(client)
-    url = f"/incidents/{run['id']}/actions/A1/decision"
-    assert client.post(url, json={"decision": "rejected", "decided_by": "ic"}).status_code == 201
-    assert client.post(url, json={"decision": "approved", "decided_by": "ic"}).status_code == 409
-
-
-def test_unknown_action_is_404(client):
-    run = submit(client)
-    resp = client.post(f"/incidents/{run['id']}/actions/A9/decision", json={"decision": "approved", "decided_by": "x"})
-    assert resp.status_code == 404
+    pm = client.post(f"/incidents/{run['id']}/postmortem")
+    assert pm.status_code == 201
+    assert pm.json()["markdown"].startswith("# payments-api errors after v2.41.0")
+    after = client.get(f"/incidents/{run['id']}").json()
+    assert after["postmortem"]["draft"]["title"] and after["state"]["trace"][-1]["agent"] == "postmortem"
+    assert "postmortem" in {u["agent"] for u in client.get("/usage").json()}
 
 
 def test_failed_run_has_nothing_to_approve():
-    with TestClient(create_app(StubPipeline(fail=True), InMemoryRunStore())) as client:
+    from .conftest import TRIAGE_REPLY, Agents
+
+    bad = {**TRIAGE_REPLY, "severity": "urgent"}
+    with make_client(Agents([bad, bad])) as client:
         run = submit(client)
         assert run["state"]["status"] == "failed"
-        resp = client.post(
-            f"/incidents/{run['id']}/actions/A1/decision", json={"decision": "approved", "decided_by": "x"}
-        )
-        assert resp.status_code == 409
+        assert decide(client, run, "A1", decision="approved").status_code == 409

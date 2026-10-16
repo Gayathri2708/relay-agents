@@ -1,0 +1,375 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Relay</title>
+<style>
+  :root { --bg:#f7f7f5; --card:#fff; --ink:#1c1c1a; --muted:#6b6b66; --line:#e4e4df; --accent:#2f5d50; --accent-soft:#e6efeb;
+          --warn:#8a5a00; --warn-soft:#fbf1dc; --bad:#9b2c2c; --bad-soft:#f8e5e5; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#141413; --card:#1e1e1c; --ink:#ececea; --muted:#9a9a94; --line:#33332f; --accent:#7fb8a4; --accent-soft:#22302b;
+            --warn:#e0b45c; --warn-soft:#332a17; --bad:#e58a8a; --bad-soft:#3a2020; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.55 system-ui, -apple-system, Segoe UI, sans-serif; }
+  main { max-width:1180px; margin:0 auto; padding:32px 16px 64px; }
+  h1 { font-size:22px; margin:0 0 4px; } .sub { color:var(--muted); margin:0 0 24px; }
+  h2 { font-size:16px; margin:0 0 10px; } h3 { font-size:14px; margin:12px 0 6px; }
+  .layout { display:grid; grid-template-columns: 340px 1fr; gap:16px; align-items:start; }
+  @media (max-width: 860px) { .layout { grid-template-columns: 1fr; } }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; margin-bottom:16px; min-width:0; }
+  label { font-weight:600; display:block; margin-bottom:8px; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  input[type=text], select, textarea { width:100%; padding:10px 12px; border:1px solid var(--line); border-radius:8px; background:var(--bg); color:var(--ink); font:inherit; }
+  textarea { min-height:120px; font:13px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; resize:vertical; }
+  button { padding:8px 14px; border:0; border-radius:8px; background:var(--accent); color:var(--card); font:inherit; font-weight:600; cursor:pointer; }
+  button.secondary { background:var(--accent-soft); color:var(--accent); }
+  button.danger { background:var(--bad-soft); color:var(--bad); }
+  button:disabled { opacity:.5; cursor:default; }
+  .muted, .meta { color:var(--muted); font-size:13px; }
+  .badge { display:inline-block; border-radius:6px; padding:0 7px; font-size:12px; font-weight:700; background:var(--accent-soft); color:var(--accent); }
+  .badge.warn { background:var(--warn-soft); color:var(--warn); } .badge.bad { background:var(--bad-soft); color:var(--bad); }
+  .badge.plain { background:transparent; border:1px solid var(--line); color:var(--muted); font-weight:500; }
+  .banner { border-left:4px solid var(--warn); background:var(--warn-soft); padding:10px 12px; border-radius:8px; margin-bottom:12px; }
+  .banner.bad { border-color:var(--bad); background:var(--bad-soft); }
+  #runs { list-style:none; margin:0; padding:0; }
+  #runs li { padding:8px 6px; border-top:1px solid var(--line); cursor:pointer; border-radius:6px; }
+  #runs li:hover, #runs li.active { background:var(--accent-soft); }
+  .steps { display:flex; gap:8px; flex-wrap:wrap; }
+  .step { border:1px solid var(--line); border-radius:10px; padding:8px 10px; min-width:130px; font-size:13px; }
+  .step.ok { border-color:var(--accent); } .step.error { border-color:var(--bad); } .step.running { border-style:dashed; }
+  .step b { display:block; text-transform:capitalize; }
+  .chip { display:inline-block; background:var(--accent-soft); color:var(--accent); border-radius:6px; padding:0 6px; font-size:12px; font-weight:700; margin:0 2px; cursor:pointer; border:0; }
+  .finding { padding:6px 0; border-top:1px solid var(--line); }
+  .action { border:1px solid var(--line); border-radius:10px; padding:12px; margin-top:10px; }
+  .action.blocked { border-color:var(--bad); }
+  .action .title { font-weight:700; }
+  pre { white-space:pre-wrap; word-break:break-word; background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:10px; font-size:12.5px; margin:6px 0; }
+  details { margin:4px 0; } summary { cursor:pointer; }
+  table { border-collapse:collapse; width:100%; font-size:13px; } th, td { text-align:left; padding:4px 6px; border-top:1px solid var(--line); }
+  td.num, th.num { text-align:right; font-variant-numeric:tabular-nums; }
+  .editor { display:none; margin-top:10px; } .editor.open { display:block; } .editor input, .editor textarea { margin-bottom:6px; }
+  .postmortem h1 { font-size:18px; } .postmortem h2 { font-size:15px; margin-top:14px; }
+  .empty { color:var(--muted); padding:40px 0; text-align:center; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Relay</h1>
+  <p class="sub">Incident response with a human in charge. Agents triage, investigate and propose; you approve. Nothing is ever executed: approved actions are only simulated.</p>
+
+  <div class="layout">
+    <div>
+      <section class="card">
+        <label for="alertText">New alert</label>
+        <select id="sample" aria-label="Sample alert"><option value="">Load a sample alert…</option></select>
+        <div style="height:8px"></div>
+        <textarea id="alertText" placeholder="Paste alert text. Secrets, tokens and emails are redacted before any AI sees it."></textarea>
+        <div class="row" style="margin-top:8px">
+          <button id="submit">Run agents</button>
+          <span class="muted" id="submitStatus"></span>
+        </div>
+      </section>
+      <section class="card">
+        <label for="who">Your name (recorded on decisions)</label>
+        <input id="who" type="text" placeholder="e.g. ic-on-call" autocomplete="off">
+      </section>
+      <section class="card">
+        <h2>Runs</h2>
+        <ul id="runs"></ul>
+      </section>
+      <section class="card">
+        <h2>Usage by agent</h2>
+        <div id="usage" class="muted">No runs yet.</div>
+      </section>
+    </div>
+
+    <div id="detail"><div class="card empty">Submit an alert or pick a run.</div></div>
+  </div>
+</main>
+
+<script>
+const $ = (sel) => document.querySelector(sel);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const money = (x) => "$" + Number(x || 0).toFixed(5);
+const STAGES = ["triage", "investigate", "plan", "qa"];
+let current = null, pollTimer = null;
+
+async function api(path, opts = {}) {
+  const res = await fetch(path, {headers: {"content-type": "application/json"}, ...opts});
+  const body = res.headers.get("content-type")?.includes("json") ? await res.json() : await res.text();
+  if (!res.ok) {
+    const d = body?.detail;
+    throw new Error(typeof d === "string" ? d : d?.problems ? d.message + ": " + d.problems.join("; ") : JSON.stringify(d ?? body));
+  }
+  return body;
+}
+
+function who() {
+  const name = $("#who").value.trim();
+  try { localStorage.setItem("relay-who", name); } catch {}
+  return name;
+}
+
+// --- samples, submit, runs list ----------------------------------------------------------------
+async function loadSamples() {
+  const samples = await api("/samples");
+  for (const s of samples) {
+    const opt = document.createElement("option");
+    opt.value = s.text; opt.textContent = s.name;
+    $("#sample").append(opt);
+  }
+}
+$("#sample").onchange = (e) => { if (e.target.value) $("#alertText").value = e.target.value; };
+
+$("#submit").onclick = async () => {
+  const text = $("#alertText").value.trim();
+  if (!text) return;
+  $("#submit").disabled = true; $("#submitStatus").textContent = "starting…";
+  try {
+    const run = await api("/incidents", {method: "POST", body: JSON.stringify({alert: text})});
+    $("#submitStatus").textContent = "";
+    await loadRuns();
+    openRun(run.id);
+  } catch (e) { $("#submitStatus").textContent = e.message; }
+  $("#submit").disabled = false;
+};
+
+function statusBadge(status) {
+  const cls = {awaiting_approval: "", resolved: "plain", escalated: "warn", failed: "bad", running: "plain"}[status] ?? "plain";
+  return `<span class="badge ${cls}">${esc(status.replace("_", " "))}</span>`;
+}
+
+async function loadRuns() {
+  const runs = await api("/incidents");
+  $("#runs").innerHTML = runs.length ? runs.map((r) => `
+    <li data-id="${esc(r.id)}" class="${r.id === current ? "active" : ""}">
+      ${statusBadge(r.status)} <b>${esc(r.service ?? "…")}</b> ${r.severity ? `<span class="badge plain">${esc(r.severity)}</span>` : ""}
+      <div class="meta">${new Date(r.created_at).toLocaleString()} · ${money(r.cost_usd)}</div>
+    </li>`).join("") : `<li class="muted">No runs yet.</li>`;
+  document.querySelectorAll("#runs li[data-id]").forEach((li) => li.onclick = () => openRun(li.dataset.id));
+  loadUsage();
+}
+
+async function loadUsage() {
+  const rows = await api("/usage");
+  if (!rows.length) return;
+  $("#usage").innerHTML = `<table><tr><th>Agent</th><th class="num">Calls</th><th class="num">Tokens</th><th class="num">Cost</th><th class="num">Avg</th></tr>
+    ${rows.map((u) => `<tr><td>${esc(u.agent)}</td><td class="num">${u.llm_calls}</td>
+      <td class="num">${(u.prompt_tokens + u.completion_tokens).toLocaleString()}</td>
+      <td class="num">${money(u.cost_usd)}</td><td class="num">${(u.avg_latency_ms / 1000).toFixed(1)}s</td></tr>`).join("")}</table>`;
+}
+
+// --- run detail ----------------------------------------------------------------------------------
+async function openRun(id) {
+  current = id;
+  clearTimeout(pollTimer);
+  const run = await api(`/incidents/${id}`);
+  render(run);
+  document.querySelectorAll("#runs li").forEach((li) => li.classList.toggle("active", li.dataset.id === id));
+  if (run.state.status === "running") pollTimer = setTimeout(() => openRun(id), 1500);
+  else if (pollTimer !== null) { pollTimer = null; loadRuns(); }
+}
+
+function stepsHtml(state) {
+  const spans = state.trace;
+  const cells = spans.map((s) => `
+    <div class="step ${s.status}">
+      <b>${esc(s.agent)}${s.loop ? ` <span class="badge plain">revision ${s.loop}</span>` : ""}</b>
+      <span class="meta">${esc(llmModel(s))}</span><br>
+      ${(s.latency_ms / 1000).toFixed(1)}s · ${tokens(s).toLocaleString()} tok · ${money(cost(s))}
+    </div>`);
+  if (state.status === "running") {
+    const next = nextStage(state);
+    cells.push(`<div class="step running"><b>${esc(next)}</b><span class="meta">running…</span></div>`);
+  }
+  return `<div class="steps">${cells.join("")}</div>`;
+}
+const llmModel = (s) => s.llm_calls.length ? s.llm_calls[s.llm_calls.length - 1].model : "no LLM call";
+const tokens = (s) => s.llm_calls.reduce((n, c) => n + c.prompt_tokens + c.completion_tokens, 0);
+const cost = (s) => s.llm_calls.reduce((n, c) => n + c.cost_usd, 0);
+function nextStage(state) {
+  const last = state.trace[state.trace.length - 1];
+  if (!last) return "triage";
+  if (last.agent === "qa") return state.qa?.verdict === "reinvestigate" ? "investigate" : "plan";
+  return STAGES[STAGES.indexOf(last.agent) + 1] ?? "…";
+}
+
+function evidenceIndex(state) {
+  const map = {};
+  for (const e of state.investigation?.evidence ?? []) map[e.id] = e;
+  return map;
+}
+function sectionExcerpt(state, section) {
+  const ev = (state.investigation?.evidence ?? []).find((e) => e.kind === "runbook" && e.content.includes(`[${section}]`));
+  return ev ? `${ev.source}\n\n${ev.content}` : "Section text not in the retrieved evidence.";
+}
+
+function render(run) {
+  const s = run.state;
+  const decided = Object.fromEntries(run.decisions.map((d) => [d.action_id, d]));
+  const open = ["awaiting_approval", "escalated"].includes(s.status);
+  const total = run.usage.reduce((n, u) => n + u.cost_usd, 0);
+  let html = `<section class="card">
+    <div class="row">${statusBadge(s.status)}
+      ${s.triage ? `<b>${esc(s.triage.service)}</b> <span class="badge plain">${esc(s.triage.severity)}</span>` : ""}
+      <span class="muted">run ${esc(run.id.slice(0, 8))} · ${money(total)}</span></div>`;
+
+  if (s.alert.injection_flags.length) html += `<div class="banner bad" style="margin-top:12px"><b>Possible prompt injection in the alert</b> (${esc(s.alert.injection_flags.join(", "))}). Agents treat it as data, and actions are checked against runbooks.</div>`;
+  if (s.status === "escalated") html += `<div class="banner" style="margin-top:12px"><b>Escalated to a human.</b><ul>${s.qa.escalation_reasons.map((r) => `<li>${esc(r)}</li>`).join("")}</ul></div>`;
+  if (s.status === "failed") html += `<div class="banner bad" style="margin-top:12px"><b>Failed at ${esc(s.failed_stage ?? "?")}.</b> ${esc(s.error)}</div>`;
+  html += `<h3>Agent steps</h3>${stepsHtml(s)}`;
+  if (Object.keys(s.alert.redactions).length) html += `<p class="meta">Redacted before any AI saw it: ${esc(Object.entries(s.alert.redactions).map(([k, v]) => `${v} ${k}`).join(", "))}</p>`;
+  html += `<details><summary class="meta">Alert text (redacted)</summary><pre>${esc(s.alert.text)}</pre></details></section>`;
+
+  if (s.triage) html += `<section class="card"><h2>Triage</h2>
+    <p>${esc(s.triage.severity_rationale)} <span class="badge plain">${esc(s.triage.policy_section)}</span></p>
+    <ul>${s.triage.symptoms.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>
+    <p class="meta">Started ${esc(new Date(s.triage.start_time).toISOString().replace(".000Z", "Z"))}</p></section>`;
+
+  if (s.investigation) {
+    const ev = evidenceIndex(s);
+    html += `<section class="card"><h2>Investigation</h2><p>${esc(s.investigation.summary)}</p>
+      <p><b>Likely cause:</b> ${esc(s.investigation.likely_cause)}</p>
+      ${s.investigation.findings.map((f) => `<div class="finding"><span class="badge ${f.confidence === "high" ? "" : "plain"}">${esc(f.confidence)}</span>
+        ${esc(f.statement)} ${f.evidence_ids.map((id) => `<button class="chip" data-ev="${esc(id)}">${esc(id)}</button>`).join("")}
+        <pre class="evbox" hidden></pre></div>`).join("")}
+      <details><summary class="meta">All evidence (${s.investigation.evidence.length})</summary>
+        ${s.investigation.evidence.map((e) => `<details><summary>${esc(e.id)} · ${esc(e.kind)} · ${esc(e.source)}
+          ${e.injection_flags.length ? `<span class="badge bad">injection?</span>` : ""}</summary><pre>${esc(e.content)}</pre></details>`).join("")}
+      </details></section>`;
+  }
+
+  if (s.qa) html += `<section class="card"><h2>QA gate</h2>
+    <p><span class="badge ${s.qa.verdict === "pass" ? "" : "warn"}">${esc(s.qa.verdict.replace("_", " "))}</span>
+      confidence ${Number(s.qa.confidence).toFixed(2)} · revisions ${s.qa_loops}</p>
+    ${s.qa.reviewer_notes ? `<p class="muted">${esc(s.qa.reviewer_notes)}</p>` : ""}
+    ${s.qa.problems.length ? `<ul>${s.qa.problems.map((p) => `<li><span class="badge plain">${esc(p.source)}</span> ${esc(p.action_id ?? "plan")}: ${esc(p.problem)}</li>`).join("")}</ul>` : ""}
+    </section>`;
+
+  if (s.plan && s.status !== "running") {
+    html += `<section class="card"><h2>Proposed actions</h2><p>${esc(s.plan.summary)}</p>`;
+    for (const a of s.plan.actions) {
+      const d = decided[a.id], blocked = s.qa?.blocked_actions.includes(a.id);
+      const shown = d?.edited_action ?? a;
+      html += `<div class="action ${blocked ? "blocked" : ""}">
+        <div class="row"><span class="badge plain">${esc(a.id)}</span><span class="title">${esc(shown.title)}</span>
+          <span class="badge plain">${esc(a.kind.replace("_", " "))}</span>
+          ${a.risk === "high" ? `<span class="badge bad">high risk</span>` : ""}
+          ${a.requires_approval ? `<span class="badge warn">needs approval</span>` : ""}
+          ${blocked ? `<span class="badge bad">blocked by QA</span>` : ""}</div>
+        <p>${esc(shown.details)}</p>
+        ${shown.target ? `<p class="meta">Target: ${esc(shown.target)}</p>` : ""}
+        ${shown.status_update_draft ? `<pre>${esc(shown.status_update_draft)}</pre>` : ""}
+        <div class="meta">Cites ${a.citations.map((c) => `<button class="chip" data-section="${esc(c.section)}">${esc(c.section)}</button> ${esc(c.runbook)}`).join(", ")}</div>
+        <pre class="secbox" hidden></pre>`;
+      if (d) {
+        html += `<p><span class="badge ${d.decision === "approved" ? "" : "bad"}">${esc(d.decision)}${d.edited_action ? " with edits" : ""}</span>
+          <span class="meta">by ${esc(d.decided_by)} · ${new Date(d.decided_at).toLocaleString()}</span></p>`;
+        if (d.simulation) html += `<pre>${esc(d.simulation.transcript.join("\n"))}</pre>`;
+      } else if (open) {
+        html += `<div class="row">
+          <button data-act="approve" data-id="${esc(a.id)}" ${blocked ? "disabled title='Blocked by QA: edit or reject'" : ""}>Approve</button>
+          <button class="secondary" data-act="edit" data-id="${esc(a.id)}">Edit</button>
+          <button class="danger" data-act="reject" data-id="${esc(a.id)}">Reject</button></div>
+          <div class="editor" id="edit-${esc(a.id)}">
+            <input type="text" data-field="title" value="${esc(a.title)}">
+            <input type="text" data-field="target" value="${esc(a.target ?? "")}" placeholder="target">
+            <textarea data-field="details">${esc(a.details)}</textarea>
+            ${a.kind === "status_update" ? `<textarea data-field="status_update_draft">${esc(a.status_update_draft ?? "")}</textarea>` : ""}
+            <div class="row"><button data-act="approve-edit" data-id="${esc(a.id)}">Approve edited version</button>
+              <span class="meta">Edits are re-checked against the runbooks.</span></div>
+          </div>`;
+      }
+      html += `<div class="meta err" id="err-${esc(a.id)}"></div></div>`;
+    }
+    html += `</section>`;
+  }
+
+  if (open) html += `<section class="card"><h2>Resolve</h2>
+    <textarea id="resolveNote" placeholder="What fixed it? (used in the postmortem)" style="min-height:70px"></textarea>
+    <div class="row" style="margin-top:8px"><button id="resolve">Mark resolved</button><span class="meta" id="resolveErr"></span></div></section>`;
+
+  if (s.status === "resolved") html += `<section class="card"><h2>Postmortem</h2>
+    ${run.resolution ? `<p class="meta">Resolved by ${esc(run.resolution.resolved_by)}: ${esc(run.resolution.note)}</p>` : ""}
+    ${run.postmortem ? `<div class="postmortem">${markdown(run.postmortem.markdown)}</div>`
+      : `<div class="row"><button id="postmortem">Draft postmortem</button><span class="meta" id="pmStatus"></span></div>`}</section>`;
+
+  html += `<section class="card"><h2>Trace</h2>${s.trace.map((sp, i) => `<details><summary>${i + 1}. ${esc(sp.agent)}${sp.loop ? ` (revision ${sp.loop})` : ""} · ${esc(sp.status)} · ${(sp.latency_ms / 1000).toFixed(1)}s · ${sp.llm_calls.length} LLM call(s) · ${sp.tool_calls.length} tool call(s)</summary>
+    ${sp.tool_calls.length ? `<table>${sp.tool_calls.map((t) => `<tr><td>${esc(t.tool)}</td><td>${esc(t.input)}</td><td>${esc(t.summary)}</td><td class="num">${t.latency_ms}ms</td></tr>`).join("")}</table>` : ""}
+    ${sp.llm_calls.map((c) => `<details><summary class="meta">attempt ${c.attempt} · ${esc(c.model)} · ${c.prompt_tokens}/${c.completion_tokens} tok · ${money(c.cost_usd)} · ${c.latency_ms}ms ${c.problems.length ? `· <span class="badge warn">rejected</span>` : ""}</summary>
+      ${c.problems.length ? `<pre>${esc(c.problems.join("\n"))}</pre>` : ""}<pre>${esc(c.reply)}</pre></details>`).join("")}
+    ${sp.error ? `<pre>${esc(sp.error)}</pre>` : ""}</details>`).join("")}</section>`;
+
+  $("#detail").innerHTML = html;
+  wire(run);
+}
+
+function wire(run) {
+  const s = run.state;
+  document.querySelectorAll("[data-ev]").forEach((b) => b.onclick = () => {
+    const box = b.closest(".finding").querySelector(".evbox");
+    const e = evidenceIndex(s)[b.dataset.ev];
+    box.textContent = e ? `${e.id} · ${e.kind} · ${e.source}\n\n${e.content}` : "unknown evidence";
+    box.hidden = !box.hidden;
+  });
+  document.querySelectorAll("[data-section]").forEach((b) => b.onclick = () => {
+    const box = b.closest(".action").querySelector(".secbox");
+    box.textContent = sectionExcerpt(s, b.dataset.section);
+    box.hidden = !box.hidden;
+  });
+  document.querySelectorAll("[data-act]").forEach((b) => b.onclick = async () => {
+    const id = b.dataset.id, act = b.dataset.act;
+    if (act === "edit") { $(`#edit-${id}`).classList.toggle("open"); return; }
+    const name = who();
+    if (!name) { $(`#err-${id}`).textContent = "Enter your name first (left)."; return; }
+    const body = {decided_by: name, decision: act === "reject" ? "rejected" : "approved"};
+    if (act === "approve-edit") {
+      body.edits = {};
+      $(`#edit-${id}`).querySelectorAll("[data-field]").forEach((f) => { if (f.value.trim()) body.edits[f.dataset.field] = f.value.trim(); });
+    }
+    try {
+      await api(`/incidents/${run.id}/actions/${id}/decision`, {method: "POST", body: JSON.stringify(body)});
+      openRun(run.id);
+    } catch (e) { $(`#err-${id}`).textContent = e.message; }
+  });
+  const resolve = $("#resolve");
+  if (resolve) resolve.onclick = async () => {
+    const name = who();
+    if (!name) { $("#resolveErr").textContent = "Enter your name first (left)."; return; }
+    try {
+      await api(`/incidents/${run.id}/resolve`, {method: "POST", body: JSON.stringify({resolved_by: name, note: $("#resolveNote").value})});
+      openRun(run.id); loadRuns();
+    } catch (e) { $("#resolveErr").textContent = e.message; }
+  };
+  const pm = $("#postmortem");
+  if (pm) pm.onclick = async () => {
+    pm.disabled = true; $("#pmStatus").textContent = "drafting…";
+    try { await api(`/incidents/${run.id}/postmortem`, {method: "POST"}); openRun(run.id); loadUsage(); }
+    catch (e) { $("#pmStatus").textContent = e.message; pm.disabled = false; }
+  };
+}
+
+// Tiny Markdown renderer for the postmortem: headings, bullet lists, checkboxes, bold, italics.
+function markdown(md) {
+  const inline = (t) => esc(t).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/\*(.+?)\*/g, "<i>$1</i>");
+  let out = "", inList = false;
+  for (const line of md.split("\n")) {
+    const li = line.match(/^- (\[ \] )?(.*)/);
+    if (li && !inList) { out += "<ul>"; inList = true; }
+    if (!li && inList) { out += "</ul>"; inList = false; }
+    if (li) out += `<li>${li[1] ? "☐ " : ""}${inline(li[2])}</li>`;
+    else if (line.startsWith("## ")) out += `<h2>${inline(line.slice(3))}</h2>`;
+    else if (line.startsWith("# ")) out += `<h1>${inline(line.slice(2))}</h1>`;
+    else if (line.trim()) out += `<p>${inline(line)}</p>`;
+  }
+  return out + (inList ? "</ul>" : "");
+}
+
+try { $("#who").value = localStorage.getItem("relay-who") || ""; } catch {}
+loadSamples();
+loadRuns();
+</script>
+</body>
+</html>

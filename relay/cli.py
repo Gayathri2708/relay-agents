@@ -14,12 +14,15 @@ from .graph import IncidentState, Pipeline
 from .schemas import Alert
 from .store import PostgresRunStore
 from .tools.ops import PostgresOps
+from .tracing import summarize
 
 
 def render(state: IncidentState) -> str:
     out = [f"status: {state.status}"]
     if state.alert.redactions:
         out.append(f"redacted from alert: {state.alert.redactions}")
+    if state.alert.injection_flags:
+        out.append(f"possible prompt injection in alert: {state.alert.injection_flags}")
     if t := state.triage:
         started = f"{t.start_time:%Y-%m-%d %H:%M}Z"
         out += ["", f"TRIAGE  {t.service}  {t.severity}  (per {t.policy_section}, started {started})",
@@ -38,6 +41,21 @@ def render(state: IncidentState) -> str:
             out += [f"  {a.id}. {a.kind}: {a.title}{flag}", f"      {a.details}", f"      cites: {cites}"]
             if a.status_update_draft:
                 out.append(f"      draft: \"{a.status_update_draft}\"")
+    if q := state.qa:
+        out += ["", f"QA GATE  verdict={q.verdict}  confidence={q.confidence:.2f}  revisions={state.qa_loops}"]
+        out += [f"  - [{p.source}] {p.action_id or 'plan'}: {p.problem}" for p in q.problems]
+        out += [f"  escalated: {r}" for r in q.escalation_reasons]
+        if q.blocked_actions:
+            out.append(f"  blocked (edit or reject): {', '.join(q.blocked_actions)}")
+    if state.trace:
+        out += ["", "USAGE  agent        model                 calls  tokens in/out   cost      latency"]
+        for s in state.trace:
+            out.append(
+                f"  {s.agent:<11} {s.model or '-':<21} {len(s.llm_calls):>5}"
+                f"  {s.prompt_tokens:>6}/{s.completion_tokens:<6}  ${s.cost_usd:.5f}  {s.latency_ms / 1000:.1f}s"
+            )
+        total = sum(u.cost_usd for u in summarize(state.trace))
+        out.append(f"  total cost ${total:.5f}")
     if state.error:
         out += ["", f"FAILED at {state.failed_stage}: {state.error}"]
     return "\n".join(out)
@@ -57,10 +75,13 @@ def main() -> int:
         state = Pipeline.from_settings(settings, PostgresOps(pool)).run(Alert.from_raw(args.alert_file.read_text()))
         print(state.model_dump_json(indent=2) if args.json else render(state))
         if args.save:
-            print(f"\nsaved run {PostgresRunStore(pool).save(state).id}")
+            store = PostgresRunStore(pool)
+            record = store.create(IncidentState(alert=state.alert))
+            store.update(record.id, state)
+            print(f"\nsaved run {record.id}")
     finally:
         pool.close()
-    return 0 if state.status == "awaiting_approval" else 1
+    return 0 if state.status in ("awaiting_approval", "escalated") else 1
 
 
 if __name__ == "__main__":

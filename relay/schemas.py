@@ -1,6 +1,6 @@
 """Typed contracts for every handoff in the pipeline.
 
-    Alert --triage--> TriageResult --investigate--> Investigation --plan--> ResponsePlan
+    Alert --triage--> TriageResult --investigate--> Investigation --plan--> ResponsePlan --qa--> QAReport
 
 The *Draft models are what an LLM is asked to return. Agents validate a draft, check it against
 the evidence they hold, then build the full contract model that is handed to the next stage.
@@ -13,6 +13,7 @@ from typing import Annotated, Literal
 from pydantic import AfterValidator, BaseModel, Field, field_validator, model_validator
 
 from .redact import redact
+from .untrusted import scan
 
 Severity = Literal["P1", "P2", "P3", "P4"]
 Service = Literal["payments-api", "checkout", "auth-service", "orders-db", "unknown"]
@@ -46,11 +47,17 @@ class Alert(BaseModel):
     text: str = Field(min_length=1, max_length=20_000)
     received_at: UtcDatetime = Field(default_factory=lambda: datetime.now(UTC))
     redactions: dict[str, int] = Field(default_factory=dict)
+    injection_flags: list[str] = Field(default_factory=list)  # see untrusted.scan
 
     @classmethod
     def from_raw(cls, raw_text: str, received_at: datetime | None = None) -> "Alert":
         result = redact(raw_text)
-        return cls(text=result.text, received_at=received_at or datetime.now(UTC), redactions=result.counts)
+        return cls(
+            text=result.text,
+            received_at=received_at or datetime.now(UTC),
+            redactions=result.counts,
+            injection_flags=scan(result.text),
+        )
 
 
 # --- Triage ------------------------------------------------------------------------------------
@@ -95,6 +102,7 @@ class Evidence(BaseModel):
     kind: EvidenceKind
     source: str  # runbook filename, deploy version, incident id, ...
     content: str
+    injection_flags: list[str] = []
 
     @property
     def defined_sections(self) -> set[str]:
@@ -116,6 +124,19 @@ class InvestigationDraft(BaseModel):
 
 class Investigation(InvestigationDraft):
     evidence: list[Evidence]
+
+    @property
+    def confidence(self) -> float:
+        """Rough confidence from the findings: the best finding's level, capped if the cause is unknown."""
+        levels = {"high": 0.9, "medium": 0.7, "low": 0.4}
+        best = max((levels[f.confidence] for f in self.findings), default=0.0)
+        return min(best, 0.3) if self.likely_cause.strip().lower().startswith("unknown") else best
+
+    def runbook_text(self) -> str:
+        return "\n".join(e.content for e in self.evidence if e.kind == "runbook")
+
+    def all_text(self) -> str:
+        return "\n".join(e.content for e in self.evidence)
 
     def runbook_sections(self) -> dict[str, str]:
         """Citable section id -> runbook filename, from the runbook evidence that was retrieved."""
@@ -193,3 +214,78 @@ class ResponsePlan(BaseModel):
     actions: list[ProposedAction] = Field(min_length=1)
     # Relay never executes anything. This is part of the contract so every consumer sees it.
     executed: Literal[False] = False
+
+
+# --- QA gate -----------------------------------------------------------------------------------
+
+
+class ActionReview(BaseModel):
+    action_id: str
+    grounded: bool = Field(description="True only if the cited runbook text and the evidence support this action")
+    issue: str | None = Field(default=None, description="What is unsupported or wrong, if anything")
+
+
+class QAReviewDraft(BaseModel):
+    actions: list[ActionReview]
+    confidence: float = Field(ge=0, le=1, description="How confident you are that this plan is right")
+    route: Literal["pass", "revise_plan", "reinvestigate"] = Field(
+        description="revise_plan if actions are wrong; reinvestigate if the evidence cannot support any plan"
+    )
+    notes: str
+
+
+class QAProblem(BaseModel):
+    action_id: str | None
+    source: Literal["rule", "reviewer"]
+    problem: str
+
+
+class QAReport(BaseModel):
+    verdict: Literal["pass", "revise_plan", "reinvestigate", "escalate"]
+    loop: int
+    problems: list[QAProblem] = []
+    confidence: float = 0.0
+    reviewer_notes: str = ""
+    injection_flags: list[str] = []
+    escalation_reasons: list[str] = []
+    blocked_actions: list[str] = []  # failed QA; a human may edit or reject them but not approve as-is
+
+    def feedback(self) -> list[str]:
+        return [f"{p.action_id or 'plan'}: {p.problem}" for p in self.problems]
+
+
+# --- Postmortem --------------------------------------------------------------------------------
+
+
+class TimelineEntry(BaseModel):
+    time: str = Field(description="UTC time, e.g. 2026-10-14 14:02Z")
+    event: str
+
+
+class FollowUp(BaseModel):
+    owner_team: str
+    item: str
+
+
+class PostmortemDraft(BaseModel):
+    title: str
+    summary: str
+    impact: str
+    timeline: list[TimelineEntry] = Field(min_length=1)
+    root_cause: str
+    detection: str
+    resolution: str
+    what_went_well: list[str]
+    what_went_wrong: list[str]
+    action_items: list[FollowUp] = Field(min_length=1)
+
+    def markdown(self) -> str:
+        lines = [f"# {self.title}", "", "*Draft written by Relay. Review before sharing.*", "",
+                 "## Summary", self.summary, "", "## Impact", self.impact, "", "## Timeline (UTC)"]
+        lines += [f"- **{t.time}**: {t.event}" for t in self.timeline]
+        lines += ["", "## Root cause", self.root_cause, "", "## Detection", self.detection, "",
+                  "## Resolution", self.resolution, "", "## What went well"]
+        lines += [f"- {x}" for x in self.what_went_well] + ["", "## What went wrong"]
+        lines += [f"- {x}" for x in self.what_went_wrong] + ["", "## Action items"]
+        lines += [f"- [ ] **{a.owner_team}**: {a.item}" for a in self.action_items]
+        return "\n".join(lines)

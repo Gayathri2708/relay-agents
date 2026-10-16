@@ -1,35 +1,30 @@
-"""HTTP API. Submitting an alert runs the pipeline; humans then approve or reject proposed actions.
+"""HTTP API and dashboard. Submitting an alert starts a run in the background; the dashboard polls it.
 
-Recording a decision is all Relay does with it. There is no code path that executes an action.
+Humans approve, edit or reject proposed actions. Approval runs the mock executor, which only simulates.
+There is no code path that executes an action.
 """
 
 import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime
-from typing import Literal
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
-from .graph import Pipeline
 from .schemas import Alert
-from .store import AlreadyDecided, Decision, RunRecord, RunStore
+from .service import Conflict, DecisionRequest, Invalid, NotFound, RunService
+from .store import AlreadyDecided, Decision, Postmortem, Resolution, RunRecord
+from .tracing import AgentUsage
+
+STATIC = Path(__file__).with_name("static")
+SAMPLES = Path(__file__).parent.parent / "seed" / "alerts"
 
 
 class AlertIn(BaseModel):
     alert: str = Field(min_length=1, max_length=20_000, description="Raw alert text; redacted before use")
     received_at: datetime | None = None
-
-
-class DecisionIn(BaseModel):
-    decision: Literal["approved", "rejected"]
-    decided_by: str = Field(min_length=1, max_length=100)
-    note: str | None = Field(default=None, max_length=2000)
-
-
-class DecisionOut(Decision):
-    executed: Literal[False] = False
-    message: str = "Decision recorded. Relay never executes actions; carry out approved actions yourself."
 
 
 class RunSummary(BaseModel):
@@ -38,45 +33,73 @@ class RunSummary(BaseModel):
     status: str
     service: str | None
     severity: str | None
+    cost_usd: float
 
 
-def create_app(pipeline: Pipeline | None = None, store: RunStore | None = None) -> FastAPI:
+class Sample(BaseModel):
+    name: str
+    text: str
+
+
+def create_app(service: RunService | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         pool = None
-        if pipeline is None or store is None:
+        if service is None:
+            from .agents.postmortem import PostmortemAgent
             from .config import get_settings
             from .db import apply_schema, make_pool
+            from .graph import Pipeline
+            from .llm import ModelRouter
             from .store import PostgresRunStore
             from .tools.ops import PostgresOps
 
             settings = get_settings()
             pool = make_pool(settings.database_url)
             apply_schema(pool)
-            app.state.pipeline = pipeline or Pipeline.from_settings(settings, PostgresOps(pool))
-            app.state.store = store or PostgresRunStore(pool)
+            postmortem = PostmortemAgent(ModelRouter(settings).for_agent("postmortem"), settings.llm_max_retries)
+            app.state.service = RunService(
+                Pipeline.from_settings(settings, PostgresOps(pool)), PostgresRunStore(pool), postmortem
+            )
         else:
-            app.state.pipeline, app.state.store = pipeline, store
+            app.state.service = service
         yield
         if pool is not None:
             pool.close()
 
-    app = FastAPI(title="Relay", version="0.1.0", lifespan=lifespan)
+    app = FastAPI(title="Relay", version="0.2.0", lifespan=lifespan)
 
-    def get_run(run_id: uuid.UUID) -> RunRecord:
-        record = app.state.store.get(run_id)
-        if record is None:
-            raise HTTPException(404, "Run not found")
-        return record
+    def svc() -> RunService:
+        return app.state.service
+
+    def guard(fn, *args):
+        try:
+            return fn(*args)
+        except NotFound as exc:
+            raise HTTPException(404, str(exc)) from None
+        except Conflict as exc:
+            raise HTTPException(409, str(exc)) from None
+        except AlreadyDecided as exc:
+            raise HTTPException(409, f"action {exc} already has a decision; decisions are final") from None
+        except Invalid as exc:
+            detail = {"message": "the edited action fails grounding checks", "problems": exc.problems}
+            raise HTTPException(422, detail) from None
+
+    @app.get("/", include_in_schema=False)
+    def dashboard() -> FileResponse:
+        return FileResponse(STATIC / "index.html")
 
     @app.get("/health")
     def health() -> dict:
         return {"status": "ok"}
 
-    @app.post("/incidents", status_code=201)
+    @app.get("/samples")
+    def samples() -> list[Sample]:
+        return [Sample(name=p.stem, text=p.read_text()) for p in sorted(SAMPLES.glob("*.txt"))]
+
+    @app.post("/incidents", status_code=202)
     def submit(body: AlertIn) -> RunRecord:
-        alert = Alert.from_raw(body.alert, body.received_at)
-        return app.state.store.save(app.state.pipeline.run(alert))
+        return svc().submit(Alert.from_raw(body.alert, body.received_at))
 
     @app.get("/incidents")
     def list_runs(limit: int = 50) -> list[RunSummary]:
@@ -87,27 +110,31 @@ def create_app(pipeline: Pipeline | None = None, store: RunStore | None = None) 
                 status=r.state.status,
                 service=r.state.triage.service if r.state.triage else None,
                 severity=r.state.triage.severity if r.state.triage else None,
+                cost_usd=round(sum(u.cost_usd for u in r.usage), 6),
             )
-            for r in app.state.store.list(min(limit, 200))
+            for r in svc().store.recent(min(limit, 200))
         ]
 
     @app.get("/incidents/{run_id}")
     def get_incident(run_id: uuid.UUID) -> RunRecord:
-        return get_run(run_id)
+        return guard(svc().get, run_id)
 
     @app.post("/incidents/{run_id}/actions/{action_id}/decision", status_code=201)
-    def decide(run_id: uuid.UUID, action_id: str, body: DecisionIn) -> DecisionOut:
-        record = get_run(run_id)
-        plan = record.state.plan
-        if record.state.status != "awaiting_approval" or plan is None:
-            raise HTTPException(409, f"Run is {record.state.status}; there is nothing to approve")
-        if action_id not in {a.id for a in plan.actions}:
-            raise HTTPException(404, f"Action {action_id} is not in this plan")
-        try:
-            decision = app.state.store.decide(run_id, Decision(action_id=action_id, **body.model_dump()))
-        except AlreadyDecided:
-            raise HTTPException(409, f"Action {action_id} already has a decision") from None
-        return DecisionOut(**decision.model_dump())
+    def decide(run_id: uuid.UUID, action_id: str, body: DecisionRequest) -> Decision:
+        return guard(svc().decide, run_id, action_id, body)
+
+    @app.post("/incidents/{run_id}/resolve")
+    def resolve(run_id: uuid.UUID, body: Resolution) -> RunRecord:
+        return guard(svc().resolve, run_id, body)
+
+    @app.post("/incidents/{run_id}/postmortem", status_code=201)
+    def postmortem(run_id: uuid.UUID) -> Postmortem:
+        return guard(svc().draft_postmortem, run_id)
+
+    @app.get("/usage")
+    def usage() -> list[AgentUsage]:
+        """Tokens, cost and latency per agent across all runs."""
+        return svc().store.usage()
 
     return app
 

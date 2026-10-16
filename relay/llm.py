@@ -7,26 +7,42 @@ structured_call() is the only way agents talk to a model. It:
      (for example "every cited evidence id exists"),
   4. on failure, tells the model exactly what was wrong and retries,
   5. raises AgentOutputError when retries run out. Invalid output is never returned.
+Every attempt (messages, reply, tokens, cost, latency, rejection reasons) is recorded on the span.
 """
 
 import json
 import logging
 import re
+import time
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Protocol
 
 from pydantic import BaseModel, ValidationError
 
 from .config import Settings
 from .redact import redact_text
+from .tracing import LLMCall, Span
+from .untrusted import UNTRUSTED_NOTICE
 
 log = logging.getLogger(__name__)
 
 Message = dict[str, str]
 
 
+@dataclass(frozen=True)
+class Completion:
+    text: str
+    model: str
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    cost_usd: float = 0.0
+
+
 class LLM(Protocol):
-    def chat(self, messages: list[Message]) -> str: ...
+    model: str
+
+    def chat(self, messages: list[Message]) -> Completion: ...
 
 
 class AgentOutputError(Exception):
@@ -38,9 +54,9 @@ class AgentOutputError(Exception):
 
 
 class OpenAICompatibleLLM:
-    """Any OpenAI-compatible chat completions endpoint (Groq, OpenAI, vLLM, Ollama, ...)."""
+    """One model on any OpenAI-compatible chat completions endpoint (Groq, OpenAI, vLLM, Ollama, ...)."""
 
-    def __init__(self, settings: Settings):
+    def __init__(self, settings: Settings, model: str):
         from openai import OpenAI
 
         if not settings.llm_api_key:
@@ -48,16 +64,41 @@ class OpenAICompatibleLLM:
         self._client = OpenAI(
             base_url=settings.llm_base_url, api_key=settings.llm_api_key, timeout=settings.llm_timeout_s
         )
-        self._model = settings.llm_model
+        self.model = model
+        self._price_in, self._price_out = settings.llm_prices.get(model, (0.0, 0.0))
+        if model not in settings.llm_prices:
+            log.warning("no price configured for %s; its cost will show as 0", model)
 
-    def chat(self, messages: list[Message]) -> str:
+    def chat(self, messages: list[Message]) -> Completion:
         resp = self._client.chat.completions.create(
-            model=self._model,
+            model=self.model,
             messages=messages,  # type: ignore[arg-type]
             temperature=0,
             response_format={"type": "json_object"},
         )
-        return resp.choices[0].message.content or ""
+        usage = resp.usage
+        p_in, p_out = (usage.prompt_tokens, usage.completion_tokens) if usage else (0, 0)
+        return Completion(
+            text=resp.choices[0].message.content or "",
+            model=self.model,
+            prompt_tokens=p_in,
+            completion_tokens=p_out,
+            cost_usd=(p_in * self._price_in + p_out * self._price_out) / 1_000_000,
+        )
+
+
+class ModelRouter:
+    """Builds one client per agent from the MODEL_<AGENT> settings."""
+
+    def __init__(self, settings: Settings):
+        self._settings = settings
+        self._clients: dict[str, OpenAICompatibleLLM] = {}
+
+    def for_agent(self, agent: str) -> OpenAICompatibleLLM:
+        model = self._settings.model_for(agent)
+        if model not in self._clients:
+            self._clients[model] = OpenAICompatibleLLM(self._settings, model)
+        return self._clients[model]
 
 
 _FENCE = re.compile(r"```(?:json)?\s*(.*?)```", re.S)
@@ -84,9 +125,10 @@ def structured_call[T: BaseModel](
     schema: type[T],
     check: Callable[[T], list[str]] | None = None,
     max_retries: int = 2,
+    span: Span | None = None,
 ) -> T:
     system = (
-        f"{system}\n\nRespond with a single JSON object and nothing else. "
+        f"{system}\n\n{UNTRUSTED_NOTICE}\n\nRespond with a single JSON object and nothing else. "
         f"It must validate against this JSON schema:\n{json.dumps(schema.model_json_schema())}"
     )
     messages: list[Message] = [
@@ -97,12 +139,30 @@ def structured_call[T: BaseModel](
     attempts = 1 + max_retries
 
     for attempt in range(1, attempts + 1):
-        raw = llm.chat(messages)
+        t0 = time.perf_counter()
+        completion = llm.chat(messages)
+        latency_ms = int((time.perf_counter() - t0) * 1000)
+        raw = completion.text
         try:
             result = schema.model_validate_json(extract_json(raw))
             problems = check(result) if check else []
         except ValidationError as err:
             problems = _describe(err)
+
+        if span is not None:
+            span.llm_calls.append(
+                LLMCall(
+                    model=completion.model,
+                    attempt=attempt,
+                    messages=[dict(m) for m in messages],
+                    reply=redact_text(raw),
+                    prompt_tokens=completion.prompt_tokens,
+                    completion_tokens=completion.completion_tokens,
+                    cost_usd=completion.cost_usd,
+                    latency_ms=latency_ms,
+                    problems=problems,
+                )
+            )
         if not problems:
             return result
 

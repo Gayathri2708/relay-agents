@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+from relay.llm import Completion
 from relay.schemas import Alert, Evidence, Finding, Investigation, TriageResult
 from relay.tools.docpilot import DocPilotError, RunbookAnswer, RunbookHit
 from relay.tools.ops import Deploy, LogLine, MetricSnapshot, PastIncident
@@ -19,20 +20,28 @@ Reply = str | dict | Callable[[list[dict]], str | dict]
 
 
 class FakeLLM:
-    """Returns scripted replies in order. A reply may be a callable that sees the messages."""
+    """Returns scripted replies in order. A reply may be a callable that sees the messages.
 
-    def __init__(self, *replies: Reply):
+    Token counts are a rough length/4 so traces have realistic-looking, deterministic numbers;
+    cost uses $1 per 1M tokens each way.
+    """
+
+    def __init__(self, *replies: Reply, model: str = "fake-model"):
         self.replies = list(replies)
         self.calls: list[list[dict]] = []
+        self.model = model
 
-    def chat(self, messages: list[dict]) -> str:
+    def chat(self, messages: list[dict]) -> Completion:
         self.calls.append([dict(m) for m in messages])
         if not self.replies:
             raise AssertionError("FakeLLM ran out of scripted replies")
         reply = self.replies.pop(0)
         if callable(reply):
             reply = reply(messages)
-        return reply if isinstance(reply, str) else json.dumps(reply)
+        text = reply if isinstance(reply, str) else json.dumps(reply)
+        p_in = sum(len(m["content"]) for m in messages) // 4
+        p_out = len(text) // 4
+        return Completion(text, self.model, p_in, p_out, (p_in + p_out) / 1_000_000)
 
     def sent_text(self) -> str:
         return "\n".join(m["content"] for call in self.calls for m in call)
@@ -185,3 +194,45 @@ def investigation() -> Investigation:
         findings=[Finding(statement="Errors follow the deploy", confidence="high", evidence_ids=["E1"])],
         evidence=runbook_evidence(),
     )
+
+
+QA_PASS = {
+    "actions": [{"action_id": f"A{i}", "grounded": True, "issue": None} for i in (1, 2, 3)],
+    "confidence": 0.85,
+    "route": "pass",
+    "notes": "Every action follows its cited runbook section and the deploy evidence.",
+}
+
+POLICY = "incident-severity-and-communication-policy.md"
+# The fake search does not surface PAY-5; COMM-3 (owning teams and their pagers) is retrieved and fits.
+GRAPH_PLAN = json.loads(json.dumps(PLAN_REPLY))
+GRAPH_PLAN["actions"][1]["citations"] = [{"runbook": POLICY, "section": "COMM-3"}]
+
+
+class Agents:
+    """One scripted LLM per agent, so tests read as 'what triage said, what plan said, ...'."""
+
+    def __init__(self, triage=(), investigate=(), plan=(), qa=()):
+        self.triage = FakeLLM(*triage, model="fast-model")
+        self.investigate = FakeLLM(*investigate, model="strong-model")
+        self.plan = FakeLLM(*plan, model="strong-model")
+        self.qa = FakeLLM(*qa, model="strong-model")
+
+    def pipeline(self, docpilot=None, ops=None, max_loops: int = 2, min_confidence: float = 0.6):
+        from relay.agents.investigate import InvestigateAgent
+        from relay.agents.plan import PlanAgent
+        from relay.agents.qa import QAAgent
+        from relay.agents.triage import TriageAgent
+        from relay.graph import Pipeline
+
+        docpilot, ops = docpilot or FakeDocPilot(), ops or FakeOps()
+        return Pipeline(
+            TriageAgent(self.triage, docpilot, 1),
+            InvestigateAgent(self.investigate, docpilot, ops, 1),
+            PlanAgent(self.plan, 1),
+            QAAgent(self.qa, 1, max_loops, min_confidence),
+        )
+
+
+def happy_agents() -> Agents:
+    return Agents([TRIAGE_REPLY], [INVESTIGATION_REPLY], [GRAPH_PLAN], [QA_PASS])

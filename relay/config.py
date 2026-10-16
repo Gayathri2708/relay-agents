@@ -1,6 +1,13 @@
 from functools import lru_cache
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# USD per 1M tokens (input, output). Groq list prices as of October 2026; override with LLM_PRICES.
+DEFAULT_PRICES: dict[str, tuple[float, float]] = {
+    "openai/gpt-oss-20b": (0.075, 0.30),
+    "openai/gpt-oss-120b": (0.15, 0.60),
+}
 
 
 class Settings(BaseSettings):
@@ -8,10 +15,21 @@ class Settings(BaseSettings):
 
     llm_base_url: str = "https://api.groq.com/openai/v1"
     llm_api_key: str = ""
-    llm_model: str = "openai/gpt-oss-120b"
     llm_timeout_s: float = 60.0
     # Extra attempts after the first when the model returns output that fails validation.
     llm_max_retries: int = 2
+
+    # Model routing: a small fast model where the task is classification, a stronger one for reasoning.
+    model_triage: str = "openai/gpt-oss-20b"
+    model_investigate: str = "openai/gpt-oss-120b"
+    model_plan: str = "openai/gpt-oss-120b"
+    model_qa: str = "openai/gpt-oss-120b"
+    model_postmortem: str = "openai/gpt-oss-120b"
+    llm_prices: dict[str, tuple[float, float]] = Field(default_factory=lambda: dict(DEFAULT_PRICES))
+
+    # QA gate: how many times it may send work back, and the confidence below which a human must look.
+    qa_max_loops: int = 2
+    qa_min_confidence: float = 0.6
 
     database_url: str = "postgresql:///relay"
 
@@ -19,6 +37,9 @@ class Settings(BaseSettings):
     docpilot_api_key: str = ""  # read-only key with the engineering group
     docpilot_admin_key: str = ""  # seed/upload_runbooks.py only
     docpilot_timeout_s: float = 60.0
+
+    def model_for(self, agent: str) -> str:
+        return getattr(self, f"model_{agent}")
 
 
 @lru_cache
