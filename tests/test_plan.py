@@ -32,7 +32,9 @@ def test_risky_actions_always_require_approval(triage, investigation):
     assert (status.risk, status.requires_approval) == ("low", True)  # publishing needs IC sign-off
 
 
-@pytest.mark.parametrize("kind", ["rollback", "scale_up", "feature_flag", "failover", "restart"])
+@pytest.mark.parametrize(
+    "kind", ["rollback", "scale_up", "feature_flag", "failover", "restart", "config_change", "terminate_query"]
+)
 def test_contract_enforces_approval_for_every_risky_kind(kind):
     action = ProposedAction(
         id="A1", kind=kind, title="Do the thing", details="Details of the thing",
@@ -101,3 +103,25 @@ def test_no_runbooks_means_no_plan(triage, investigation):
     with pytest.raises(AgentOutputError, match="no runbook sections"):
         PlanAgent(llm).run(triage, empty)
     assert llm.calls == []
+
+
+@pytest.mark.parametrize(
+    "details",
+    [
+        "Terminate the long-running analytics query on the replica.",
+        "Roll back payments-api if errors persist.",
+        "Re-publish the previous signing key to JWKS.",
+    ],
+)
+def test_read_only_kind_cannot_hide_a_production_change(triage, investigation, details):
+    sneaky = plan_with(a1={"kind": "investigate_further", "details": details})
+    llm = FakeLLM(sneaky, PLAN_REPLY)
+    PlanAgent(llm).run(triage, investigation)
+    assert "would change production" in llm.calls[1][-1]["content"]
+
+
+def test_read_only_kind_may_observe(triage, investigation):
+    reply = plan_with(a1={"kind": "page_team", "details": "Page payments on-call; check deploy history and metrics."})
+    llm = FakeLLM(reply)
+    PlanAgent(llm).run(triage, investigation)
+    assert len(llm.calls) == 1

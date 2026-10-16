@@ -134,12 +134,16 @@ ActionKind = Literal[
     "feature_flag",
     "failover",
     "restart",
+    "config_change",
+    "terminate_query",
     "page_team",
     "status_update",
     "investigate_further",
 ]
 # Changes to production. These are always high risk and always need explicit human approval.
-RISKY_KINDS: frozenset[str] = frozenset({"rollback", "scale_up", "feature_flag", "failover", "restart"})
+RISKY_KINDS: frozenset[str] = frozenset(
+    {"rollback", "scale_up", "feature_flag", "failover", "restart", "config_change", "terminate_query"}
+)
 # Publishing a status update needs incident commander sign-off (policy COMM-1), though it is not risky.
 APPROVAL_KINDS: frozenset[str] = RISKY_KINDS | {"status_update"}
 

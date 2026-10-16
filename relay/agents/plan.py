@@ -22,8 +22,10 @@ you never execute anything. Base every action on the runbooks provided.
 Rules:
 - Each action cites at least one runbook section as {"runbook": <filename>, "section": <id>}, using ONLY
   the citable sections listed. The cited section must actually support the action.
-- Action kinds: rollback, scale_up, feature_flag, failover, restart, page_team, status_update,
-  investigate_further. Order actions by priority.
+- Action kinds: rollback, scale_up, feature_flag, failover, restart, config_change, terminate_query,
+  page_team, status_update, investigate_further. Order actions by priority.
+- Anything that changes production (deploys, scaling, flags, keys, configs, killing queries or sessions)
+  must use one of the change kinds above. investigate_further and page_team are read-only.
 - Always include a page_team action naming the owning team for P1 and P2 incidents.
 - For P1 and P2, include a status_update action whose status_update_draft follows the status page
   template. It must not name internal services, hosts or people.
@@ -32,6 +34,16 @@ Rules:
 
 # Internal names a public status update must not mention (COMM-1). "checkout" is not here: customers
 # see a checkout too, and the runbook's own template talks about purchases.
+# Wording that means an action changes production, which a read-only kind must not hide.
+_MUTATION = re.compile(
+    r"\b(roll(?:ing)?[ -]?back|revert|redeploy|deploy (?:the|a) fix|scale (?:up|out|down|to)|"
+    r"restart|reboot|fail ?over|terminate|kill|"
+    r"cancel(?:l?ing)? the|drop|delete|truncate|disable|enable|toggle|re-?publish|rotate|set the flag|"
+    r"raise max_connections)\b",
+    re.I,
+)
+_READ_ONLY_KINDS = {"page_team", "investigate_further"}
+
 _INTERNAL_NAMES = re.compile(
     r"\b(payments-api|auth-service|orders-db(?:-\d)?|patroni|argo(?: cd)?|pagerduty|jwks)\b", re.I
 )
@@ -57,6 +69,11 @@ class PlanAgent:
                         problems.append(
                             f"actions[{i}] cites {c.section} in {c.runbook}, but it is in {citable[c.section]}"
                         )
+                if action.kind in _READ_ONLY_KINDS and (verb := _MUTATION.search(f"{action.title} {action.details}")):
+                    problems.append(
+                        f"actions[{i}] is {action.kind} but would change production ({verb.group(0)!r}); "
+                        "use a change kind such as rollback, config_change or terminate_query, or split it"
+                    )
                 leaked = sorted({m.lower() for m in _INTERNAL_NAMES.findall(action.status_update_draft or "")})
                 if action.kind == "status_update" and leaked:
                     problems.append(f"actions[{i}] status update names internal systems {leaked}")
