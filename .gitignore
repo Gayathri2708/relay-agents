@@ -5,4 +5,4 @@ __pycache__/
 *.egg-info/
 .pytest_cache/
 .ruff_cache/
-evals/results/*/run.log
+evals/results/*/*.log
