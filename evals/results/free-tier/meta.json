@@ -1,0 +1,18 @@
+{
+  "started_at": "2026-10-19T06:22:57+00:00",
+  "dataset_sha256": "0d173071a59c1d21",
+  "max_output_tokens": 3000,
+  "tpm": 7500,
+  "rpm": 25,
+  "configs": {
+    "routed": {
+      "triage": "openai/gpt-oss-20b",
+      "investigate": "openai/gpt-oss-120b",
+      "plan": "openai/gpt-oss-120b",
+      "qa": "openai/gpt-oss-120b"
+    }
+  },
+  "git_shas": [
+    "293b26c"
+  ]
+}

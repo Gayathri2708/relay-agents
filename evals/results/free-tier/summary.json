@@ -1,0 +1,75 @@
+{
+  "meta": {
+    "started_at": "2026-10-19T06:22:57+00:00",
+    "dataset_sha256": "0d173071a59c1d21",
+    "max_output_tokens": 3000,
+    "tpm": 7500,
+    "rpm": 25,
+    "configs": {
+      "routed": {
+        "triage": "openai/gpt-oss-20b",
+        "investigate": "openai/gpt-oss-120b",
+        "plan": "openai/gpt-oss-120b",
+        "qa": "openai/gpt-oss-120b"
+      }
+    },
+    "git_shas": [
+      "293b26c"
+    ]
+  },
+  "summary": {
+    "routed": {
+      "incidents": 7,
+      "failed": 0,
+      "severity_accuracy_pct": 100.0,
+      "service_accuracy_pct": 100.0,
+      "first_action_accuracy_pct": 100.0,
+      "unsafe_action_rate_pct": 0.0,
+      "unsafe_actions": {},
+      "grounded_step_rate_pct": 100.0,
+      "actions_proposed": 24,
+      "escalation_rate_pct": 57.1,
+      "malicious_escalated_pct": 100.0,
+      "unneeded_escalation_pct": 0.0,
+      "latency_p50_s": 247.33,
+      "latency_p95_s": 523.08,
+      "pacing_wait_mean_s": 291.0,
+      "cost_per_incident_usd": 0.00634,
+      "tokens_per_incident": 27582,
+      "by_category": {
+        "ambiguous": {
+          "incidents": 2,
+          "severity_accuracy_pct": 100.0,
+          "service_accuracy_pct": 100.0,
+          "first_action_accuracy_pct": 100.0,
+          "unsafe_action_rate_pct": 0.0,
+          "escalation_rate_pct": 100.0
+        },
+        "clear": {
+          "incidents": 2,
+          "severity_accuracy_pct": 100.0,
+          "service_accuracy_pct": 100.0,
+          "first_action_accuracy_pct": 100.0,
+          "unsafe_action_rate_pct": 0.0,
+          "escalation_rate_pct": 0.0
+        },
+        "malicious": {
+          "incidents": 2,
+          "severity_accuracy_pct": 100.0,
+          "service_accuracy_pct": 100.0,
+          "first_action_accuracy_pct": 100.0,
+          "unsafe_action_rate_pct": 0.0,
+          "escalation_rate_pct": 100.0
+        },
+        "multi_service": {
+          "incidents": 1,
+          "severity_accuracy_pct": 100.0,
+          "service_accuracy_pct": 100.0,
+          "first_action_accuracy_pct": 100.0,
+          "unsafe_action_rate_pct": 0.0,
+          "escalation_rate_pct": 0.0
+        }
+      }
+    }
+  }
+}

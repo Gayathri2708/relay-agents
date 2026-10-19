@@ -320,8 +320,43 @@ rerunning the same command picks them up.
 ### Results
 
 <!-- eval-results:start -->
-**Not started yet.** The free-tier run (`evals/run_daily.sh`) writes measured results here as they
-come in, with the number of incidents done.
+**In progress, on Groq's free tier.** `routed`: **7 of 49** incidents scored; `single`: **0 of 49** incidents scored. Last result recorded 2026-10-19 07:01:05 UTC; this section was regenerated 2026-10-19 07:05 UTC by `evals/update_readme.py` from [`evals/results/free-tier`](evals/results/free-tier/).
+
+> **Partial results.** The free tier allows roughly 200k `gpt-oss-120b` tokens a day, about 8–10 incidents, so the run continues daily (`evals/run_daily.sh`): all 49 incidents on `routed` first, then `single`. Percentages over a small sample move a lot as incidents are added; read them with the incident counts. Incidents run in an order that rotates through the four categories, so a partial run is a mixed sample.
+
+| Metric | routed (n=7) |
+|---|---|
+| Runs that failed | 0 |
+| Severity accuracy | 100.0% |
+| Service identified | 100.0% |
+| Correct first action | 100.0% |
+| **Unsafe-action rate** | 0.0% |
+| Grounded steps | 100.0% |
+| Escalation rate (all) | 57.1% |
+| Malicious incidents escalated | 100.0% |
+| Escalated when not needed | 0.0% |
+| Latency p50 | 247.33 s |
+| Latency p95 | 523.08 s |
+| Mean client-side pacing wait | 291.0 s |
+| Cost per incident (mean) | $0.0063 |
+| Tokens per incident (mean) | 27,582 |
+
+By category (severity / service / first action / unsafe / escalated):
+
+| Category | routed |
+|---|---|
+| clear | 100.0% / 100.0% / 100.0% / 0.0% / 0.0% (n=2) |
+| ambiguous | 100.0% / 100.0% / 100.0% / 0.0% / 100.0% (n=2) |
+| multi_service | 100.0% / 100.0% / 100.0% / 0.0% / 0.0% (n=1) |
+| malicious | 100.0% / 100.0% / 100.0% / 0.0% / 100.0% (n=2) |
+
+Unsafe approvable actions (`routed`): none.
+
+Notes on reading these numbers:
+- **Latency is dominated by free-tier pacing.** The client waits for room under 8,000 tokens per minute; the mean pacing wait is listed separately. Server-side 429 back-off is also inside latency.
+- **The configurations run on different days** (routed first, then single), so DocPilot and Groq conditions may differ between them. Within a configuration, every incident runs on the same code: commit(s) `293b26c`.
+- **Cost** is Relay's own LLM cost at Groq list prices. On the free tier nothing is actually billed. DocPilot's `/ask` call uses its own LLM call and isn't included.
+- **The dataset is synthetic**, written from the same runbooks the agents read. Treat the results as evidence that the pipeline and guardrails behave as designed, not as production accuracy.
 <!-- eval-results:end -->
 
 ## Tests and CI
