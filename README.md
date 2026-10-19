@@ -302,23 +302,27 @@ severity policy. The labels are:
 | Cost per incident | Relay's own LLM cost from the traces. DocPilot's `/ask` uses its own LLM call, which isn't included. |
 
 **Configurations:** `single` runs every agent on `gpt-oss-120b`. `routed` is the shipped default:
-`gpt-oss-20b` for triage and `gpt-oss-120b` for the rest. The two configurations run interleaved
-per incident.
+`gpt-oss-20b` for triage and `gpt-oss-120b` for the rest. Given together, the two configurations
+run interleaved per incident. The free-tier run does `routed` first, then `single`.
 
 ```bash
 python -m evals.build_dataset                         # regenerate incidents.jsonl (deterministic)
 python -m evals.run --out evals/results/<run> --tpm 8000 --rpm 30   # pacing for Groq's free tier
 python -m evals.report evals/results/<run>            # writes summary.md and summary.json
+python -m evals.update_readme evals/results/<run>     # rewrites the Results block below
+evals/run_daily.sh                                    # free tier: run, wait out daily quota, publish, repeat
 ```
 
 The runner appends one line per (incident, configuration) to `results.jsonl` and resumes where it
 stopped. Provider failures (daily quota, outages) are retried, then left out rather than scored, so
 rerunning the same command picks them up.
 
-**Results: not yet run on this version.** The full comparison needs about 2M `gpt-oss-120b` tokens,
-roughly ten days of Groq's free-tier daily quota. It will run on a paid tier, and the measured
-numbers will go here as they come out of `evals/report.py`. Until then this README states no
-accuracy, safety or latency figures for the eval.
+### Results
+
+<!-- eval-results:start -->
+**Not started yet.** The free-tier run (`evals/run_daily.sh`) writes measured results here as they
+come in, with the number of incidents done.
+<!-- eval-results:end -->
 
 ## Tests and CI
 
@@ -383,9 +387,8 @@ tests/
 
 ## Roadmap
 
-1. **Run the full eval on a paid tier** and publish the measured single-vs-routed numbers here.
-   Then add an eval gate to CI on a small fixed subset, so a quality or safety regression fails
-   the build.
+1. **Finish the free-tier eval** (in progress; see Results), then add an eval gate to CI on a small
+   fixed subset, so a quality or safety regression fails the build.
 2. **Real identity:** SSO for the dashboard; hashed keys with rotation; a rule that high-risk
    actions need a second approver.
 3. **Durable runs:** a job queue (e.g. Postgres-backed) instead of the in-process thread pool, so a

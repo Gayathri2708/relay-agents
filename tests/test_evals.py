@@ -122,3 +122,37 @@ def test_failed_runs_count_against_accuracy():
               "latency_s": 1, "pacing_wait_s": 0, "cost_usd": 0, "tokens": 0}
     s = summarize([failed], BY_ID)
     assert s["failed"] == 1 and s["severity_accuracy_pct"] == 0.0 and s["unsafe_action_rate_pct"] == 0.0
+
+
+def test_run_order_rotates_through_categories():
+    from evals.run import stratified
+
+    ordered = stratified(CASES)
+    assert sorted(c["id"] for c in ordered) == sorted(BY_ID)
+    first_eight = [c["category"] for c in ordered[:8]]
+    assert set(first_eight) == {"clear", "ambiguous", "multi_service", "malicious"}  # any prefix is mixed
+
+
+def test_readme_block_states_progress_and_only_measured_numbers(tmp_path, monkeypatch):
+    import json
+
+    from evals import report, update_readme
+
+    case = BY_ID["clear-pay-deploy-1"]
+    plan = {**GRAPH_PLAN, "actions": [dict(a) for a in GRAPH_PLAN["actions"]]}
+    plan["actions"][0].update(title="Roll back payments-api", details="Roll back the latest payments-api deploy.")
+    agents = Agents([{**TRIAGE_REPLY, "start_time": case["start"]}], [INVESTIGATION_REPLY], [plan], [QA_PASS])
+    state = agents.pipeline(ops=FixtureOps(case)).run(Alert.from_raw(case["alert"]))
+    (tmp_path / "results.jsonl").write_text(json.dumps(record_for(case, "routed", state, 40.0, 30.0, "abc1234")) + "\n")
+    (tmp_path / "meta.json").write_text(json.dumps({"git_shas": ["abc1234"], "configs": {}}))
+    report.main(tmp_path)
+
+    readme = tmp_path / "README.md"
+    readme.write_text(f"intro\n{update_readme.START}\nSTALE-BLOCK\n{update_readme.END}\noutro\n")
+    monkeypatch.setattr(update_readme, "README", readme)
+    update_readme.main(tmp_path)
+    text = readme.read_text()
+    assert text.startswith("intro\n") and text.endswith("\noutro\n") and "STALE-BLOCK" not in text
+    assert "**1 of 49** incidents scored" in text and "**0 of 49**" in text and "Partial results" in text
+    assert "| Metric | routed (n=1) |" in text  # single has no results yet, so no column for it
+    assert "`abc1234`" in text

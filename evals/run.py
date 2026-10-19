@@ -5,7 +5,12 @@
 
 Results are appended per (incident, config) to <out>/results.jsonl, so an interrupted run resumes where it
 stopped. Provider failures (daily quota, outages) are not recorded as results; rerun to retry them.
-Configs run interleaved per incident so both see the same conditions.
+Configs given together run interleaved per incident so they see the same conditions.
+
+Incidents run in a fixed order that rotates through the categories (clear, ambiguous, multi-service,
+malicious), so a partial run is a mixed sample rather than only the first category.
+
+Exit codes: 0 all done, 2 daily quota reached, 3 some incidents skipped after provider errors.
 """
 
 import argparse
@@ -46,7 +51,23 @@ def load_cases() -> list[dict]:
     return [json.loads(line) for line in DATASET.read_text().splitlines() if line.strip()]
 
 
-def record_for(case: dict, config: str, state: IncidentState, latency_s: float, waited_s: float) -> dict:
+def stratified(cases: list[dict]) -> list[dict]:
+    """Round-robin across categories, keeping dataset order within each, so any prefix is a mixed sample."""
+    groups: dict[str, list[dict]] = {}
+    for c in cases:
+        groups.setdefault(c["category"], []).append(c)
+    queues = [groups[k] for k in sorted(groups)]
+    ordered = []
+    while any(queues):
+        for q in queues:
+            if q:
+                ordered.append(q.pop(0))
+    return ordered
+
+
+def record_for(
+    case: dict, config: str, state: IncidentState, latency_s: float, waited_s: float, git_sha: str = ""
+) -> dict:
     blocked = set(state.qa.blocked_actions) if state.qa else set()
     actions = []
     for a in state.plan.actions if state.plan else []:
@@ -68,6 +89,7 @@ def record_for(case: dict, config: str, state: IncidentState, latency_s: float, 
         agg["latency_s"] = round(agg["latency_s"] + s.latency_ms / 1000, 2)
     return {
         "id": case["id"], "config": config, "category": case["category"],
+        "recorded_at": datetime.now(UTC).isoformat(timespec="seconds"), "git_sha": git_sha,
         "status": state.status, "failed_stage": state.failed_stage, "error": state.error,
         "triage": {"service": state.triage.service, "severity": state.triage.severity} if state.triage else None,
         "injection_flags": state.alert.injection_flags,
@@ -92,7 +114,7 @@ def main() -> int:
     parser.add_argument("--attempts", type=int, default=2, help="tries per incident on provider errors")
     args = parser.parse_args()
 
-    cases = load_cases()
+    cases = stratified(load_cases())
     if args.ids:
         cases = [c for c in cases if c["id"] in set(args.ids)]
     cases = cases[: args.limit] if args.limit else cases
@@ -107,20 +129,23 @@ def main() -> int:
     for name in args.configs:
         settings[name] = Settings(llm_tpm=args.tpm, llm_rpm=args.rpm, **CONFIGS[name])
         routers[name] = ModelRouter(settings[name])
-    meta = args.out / "meta.json"
-    if not meta.exists():
-        meta.write_text(json.dumps({
-            "started_at": datetime.now(UTC).isoformat(), "git_sha": sha,
-            "dataset_sha256": hashlib.sha256(DATASET.read_bytes()).hexdigest()[:16],
-            "configs": {n: {a: settings[n].model_for(a) for a in ("triage", "investigate", "plan", "qa")}
-                        for n in args.configs},
-            "max_output_tokens": next(iter(settings.values())).llm_max_output_tokens,
-            "tpm": args.tpm, "rpm": args.rpm,
-        }, indent=2))
+    meta_path = args.out / "meta.json"
+    meta = json.loads(meta_path.read_text()) if meta_path.exists() else {
+        "started_at": datetime.now(UTC).isoformat(timespec="seconds"),
+        "dataset_sha256": hashlib.sha256(DATASET.read_bytes()).hexdigest()[:16],
+        "max_output_tokens": next(iter(settings.values())).llm_max_output_tokens,
+        "tpm": args.tpm, "rpm": args.rpm, "configs": {}, "git_shas": [],
+    }
+    for n in args.configs:
+        meta["configs"].setdefault(n, {a: settings[n].model_for(a) for a in ("triage", "investigate", "plan", "qa")})
+    if sha not in meta["git_shas"]:
+        meta["git_shas"].append(sha)
+    meta_path.write_text(json.dumps(meta, indent=2))
     docpilot = DocPilotClient.from_settings(next(iter(settings.values())))
 
     todo = [(c, n) for c in cases for n in args.configs if (c["id"], n) not in done]
     print(f"{len(todo)} runs to do ({len(done)} already recorded)", flush=True)
+    skipped = 0
     for i, (case, name) in enumerate(todo, 1):
         router, s = routers[name], settings[name]
         retries = s.llm_max_retries
@@ -146,13 +171,14 @@ def main() -> int:
             time.sleep(30)
         else:
             print(f"  skipping {case['id']}/{name} after {args.attempts} provider errors", flush=True)
+            skipped += 1
             continue
-        record = record_for(case, name, state, latency, waited)
+        record = record_for(case, name, state, latency, waited, sha)
         with results.open("a") as fh:
             fh.write(json.dumps(record) + "\n")
         print(f"[{i}/{len(todo)}] {case['id']:<36} {name:<7} {state.status:<17} "
               f"{latency:6.1f}s (paced {waited:5.1f}s) ${record['cost_usd']:.5f}", flush=True)
-    return 0
+    return 3 if skipped else 0
 
 
 if __name__ == "__main__":
