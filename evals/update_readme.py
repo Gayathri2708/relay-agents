@@ -36,7 +36,7 @@ def render(run_dir: Path) -> str:
     lines = [
         START,
         f"**{status}, on Groq's free tier.** {progress}. "
-        f"Last result recorded {last.replace('T', ' ')} UTC; this section was regenerated "
+        f"Last result recorded {last.replace('T', ' ').removesuffix('+00:00')} UTC; this section was regenerated "
         f"{datetime.now(UTC):%Y-%m-%d %H:%M} UTC by `evals/update_readme.py` from "
         f"[`{run_dir.as_posix()}`]({run_dir.as_posix()}/).",
         "",
