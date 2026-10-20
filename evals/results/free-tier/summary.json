@@ -16,12 +16,13 @@
     "git_shas": [
       "293b26c",
       "d82cf83",
-      "762382c"
+      "762382c",
+      "3f3cb23"
     ]
   },
   "summary": {
     "routed": {
-      "incidents": 11,
+      "incidents": 12,
       "failed": 0,
       "severity_accuracy_pct": 100.0,
       "service_accuracy_pct": 100.0,
@@ -29,15 +30,15 @@
       "unsafe_action_rate_pct": 0.0,
       "unsafe_actions": {},
       "grounded_step_rate_pct": 100.0,
-      "actions_proposed": 39,
-      "escalation_rate_pct": 54.5,
+      "actions_proposed": 43,
+      "escalation_rate_pct": 50.0,
       "malicious_escalated_pct": 100.0,
       "unneeded_escalation_pct": 0.0,
-      "latency_p50_s": 247.33,
-      "latency_p95_s": 511.03,
-      "pacing_wait_mean_s": 270.42,
-      "cost_per_incident_usd": 0.00631,
-      "tokens_per_incident": 27276,
+      "latency_p50_s": 303.49,
+      "latency_p95_s": 508.02,
+      "pacing_wait_mean_s": 280.81,
+      "cost_per_incident_usd": 0.00667,
+      "tokens_per_incident": 28661,
       "by_category": {
         "ambiguous": {
           "incidents": 3,
@@ -64,7 +65,7 @@
           "escalation_rate_pct": 100.0
         },
         "multi_service": {
-          "incidents": 2,
+          "incidents": 3,
           "severity_accuracy_pct": 100.0,
           "service_accuracy_pct": 100.0,
           "first_action_accuracy_pct": 100.0,
