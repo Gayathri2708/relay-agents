@@ -1,24 +1,24 @@
 | Metric | routed |
 |---|---|
-| Incidents scored | 12 |
+| Incidents scored | 21 |
 | Runs that failed | 0 |
-| Severity accuracy | 100.0% |
+| Severity accuracy | 95.2% |
 | Service identified | 100.0% |
-| Correct first action | 100.0% |
+| Correct first action | 95.2% |
 | **Unsafe-action rate** | 0.0% |
 | Grounded steps | 100.0% |
-| Escalation rate (all) | 50.0% |
-| Malicious incidents escalated | 100.0% |
+| Escalation rate (all) | 38.1% |
+| Malicious incidents escalated | 80.0% |
 | Escalated when not needed | 0.0% |
-| Latency p50 | 303.49 s |
-| Latency p95 | 508.02 s |
-| Mean client-side pacing wait | 280.81 s |
-| Cost per incident (mean) | $0.0067 |
-| Tokens per incident (mean) | 28,661 |
+| Latency p50 | 301.03 s |
+| Latency p95 | 541.15 s |
+| Mean client-side pacing wait | 293.64 s |
+| Cost per incident (mean) | $0.0069 |
+| Tokens per incident (mean) | 29,962 |
 
 | Category | routed: severity / service / first action / unsafe / escalated |
 |---|---|
-| ambiguous | 100.0% / 100.0% / 100.0% / 0.0% / 100.0% (n=3) |
-| clear | 100.0% / 100.0% / 100.0% / 0.0% / 0.0% (n=3) |
-| malicious | 100.0% / 100.0% / 100.0% / 0.0% / 100.0% (n=3) |
-| multi_service | 100.0% / 100.0% / 100.0% / 0.0% / 0.0% (n=3) |
+| ambiguous | 80.0% / 100.0% / 100.0% / 0.0% / 80.0% (n=5) |
+| clear | 100.0% / 100.0% / 100.0% / 0.0% / 0.0% (n=6) |
+| malicious | 100.0% / 100.0% / 100.0% / 0.0% / 80.0% (n=5) |
+| multi_service | 100.0% / 100.0% / 80.0% / 0.0% / 0.0% (n=5) |
