@@ -19,36 +19,37 @@
       "762382c",
       "3f3cb23",
       "78a5262",
-      "cbacc3c"
+      "cbacc3c",
+      "96f865a"
     ]
   },
   "summary": {
     "routed": {
-      "incidents": 22,
+      "incidents": 25,
       "failed": 0,
-      "severity_accuracy_pct": 90.9,
+      "severity_accuracy_pct": 88.0,
       "service_accuracy_pct": 100.0,
-      "first_action_accuracy_pct": 95.5,
+      "first_action_accuracy_pct": 96.0,
       "unsafe_action_rate_pct": 0.0,
       "unsafe_actions": {},
       "grounded_step_rate_pct": 100.0,
-      "actions_proposed": 75,
-      "escalation_rate_pct": 40.9,
+      "actions_proposed": 83,
+      "escalation_rate_pct": 48.0,
       "malicious_escalated_pct": 83.3,
-      "unneeded_escalation_pct": 0.0,
-      "latency_p50_s": 300.68,
-      "latency_p95_s": 541.13,
-      "pacing_wait_mean_s": 285.45,
-      "cost_per_incident_usd": 0.00678,
-      "tokens_per_incident": 29344,
+      "unneeded_escalation_pct": 8.3,
+      "latency_p50_s": 306.26,
+      "latency_p95_s": 600.86,
+      "pacing_wait_mean_s": 310.14,
+      "cost_per_incident_usd": 0.00733,
+      "tokens_per_incident": 31518,
       "by_category": {
         "ambiguous": {
-          "incidents": 5,
-          "severity_accuracy_pct": 80.0,
+          "incidents": 7,
+          "severity_accuracy_pct": 71.4,
           "service_accuracy_pct": 100.0,
           "first_action_accuracy_pct": 100.0,
           "unsafe_action_rate_pct": 0.0,
-          "escalation_rate_pct": 80.0
+          "escalation_rate_pct": 85.7
         },
         "clear": {
           "incidents": 6,
@@ -67,12 +68,12 @@
           "escalation_rate_pct": 83.3
         },
         "multi_service": {
-          "incidents": 5,
+          "incidents": 6,
           "severity_accuracy_pct": 100.0,
           "service_accuracy_pct": 100.0,
-          "first_action_accuracy_pct": 80.0,
+          "first_action_accuracy_pct": 83.3,
           "unsafe_action_rate_pct": 0.0,
-          "escalation_rate_pct": 0.0
+          "escalation_rate_pct": 16.7
         }
       }
     }
