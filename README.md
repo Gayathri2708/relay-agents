@@ -320,41 +320,41 @@ rerunning the same command picks them up.
 ### Results
 
 <!-- eval-results:start -->
-**In progress, on Groq's free tier.** `routed`: **25 of 49** incidents scored; `single`: **0 of 49** incidents scored. Last result recorded 2026-10-23 06:56:01 UTC; this section was regenerated 2026-10-23 06:57 UTC by `evals/update_readme.py` from [`evals/results/free-tier`](evals/results/free-tier/).
+**In progress, on Groq's free tier.** `routed`: **48 of 49** incidents scored; `single`: **0 of 49** incidents scored. Last result recorded 2026-10-27 05:45:03 UTC; this section was regenerated 2026-10-27 05:45 UTC by `evals/update_readme.py` from [`evals/results/free-tier`](evals/results/free-tier/).
 
 > **Partial results.** The free tier allows roughly 200k `gpt-oss-120b` tokens a day, about 8–10 incidents, so the run continues daily (`evals/run_daily.sh`): all 49 incidents on `routed` first, then `single`. Percentages over a small sample move a lot as incidents are added; read them with the incident counts. Incidents run in an order that rotates through the four categories, so a partial run is a mixed sample.
 
-| Metric | routed (n=25) |
+| Metric | routed (n=48) |
 |---|---|
-| Runs that failed | 0 |
-| Severity accuracy | 88.0% |
+| Runs that failed | 1 |
+| Severity accuracy | 89.6% |
 | Service identified | 100.0% |
-| Correct first action | 96.0% |
+| Correct first action | 95.8% |
 | **Unsafe-action rate** | 0.0% |
-| Grounded steps | 100.0% |
-| Escalation rate (all) | 48.0% |
-| Malicious incidents escalated | 83.3% |
-| Escalated when not needed | 8.3% |
-| Latency p50 | 306.26 s |
-| Latency p95 | 600.86 s |
-| Mean client-side pacing wait | 310.14 s |
-| Cost per incident (mean) | $0.0073 |
-| Tokens per incident (mean) | 31,518 |
+| Grounded steps | 98.8% |
+| Escalation rate (all) | 43.8% |
+| Malicious incidents escalated | 80.0% |
+| Escalated when not needed | 21.4% |
+| Latency p50 | 300.33 s |
+| Latency p95 | 587.7 s |
+| Mean client-side pacing wait | 268.86 s |
+| Cost per incident (mean) | $0.0068 |
+| Tokens per incident (mean) | 28,736 |
 
 By category (severity / service / first action / unsafe / escalated):
 
 | Category | routed |
 |---|---|
-| clear | 100.0% / 100.0% / 100.0% / 0.0% / 0.0% (n=6) |
-| ambiguous | 71.4% / 100.0% / 100.0% / 0.0% / 85.7% (n=7) |
-| multi_service | 100.0% / 100.0% / 83.3% / 0.0% / 16.7% (n=6) |
-| malicious | 83.3% / 100.0% / 100.0% / 0.0% / 83.3% (n=6) |
+| clear | 100.0% / 100.0% / 95.2% / 0.0% / 23.8% (n=21) |
+| ambiguous | 66.7% / 100.0% / 100.0% / 0.0% / 77.8% (n=9) |
+| multi_service | 87.5% / 100.0% / 87.5% / 0.0% / 12.5% (n=8) |
+| malicious | 90.0% / 100.0% / 100.0% / 0.0% / 80.0% (n=10) |
 
 Unsafe approvable actions (`routed`): none.
 
 Notes on reading these numbers:
 - **Latency is dominated by free-tier pacing.** The client waits for room under 8,000 tokens per minute; the mean pacing wait is listed separately. Server-side 429 back-off is also inside latency.
-- **The configurations run on different days** (routed first, then single), so DocPilot and Groq conditions may differ between them. Within a configuration, every incident runs on the same code: commit(s) `293b26c`, `d82cf83`, `762382c`, `3f3cb23`, `78a5262`, `cbacc3c`, `96f865a`.
+- **The configurations run on different days** (routed first, then single), so DocPilot and Groq conditions may differ between them. Within a configuration, every incident runs on the same code: commit(s) `293b26c`, `d82cf83`, `762382c`, `3f3cb23`, `78a5262`, `cbacc3c`, `96f865a`, `84a482a`.
 - **Cost** is Relay's own LLM cost at Groq list prices. On the free tier nothing is actually billed. DocPilot's `/ask` call uses its own LLM call and isn't included.
 - **The dataset is synthetic**, written from the same runbooks the agents read. Treat the results as evidence that the pipeline and guardrails behave as designed, not as production accuracy.
 <!-- eval-results:end -->

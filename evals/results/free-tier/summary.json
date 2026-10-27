@@ -20,60 +20,61 @@
       "3f3cb23",
       "78a5262",
       "cbacc3c",
-      "96f865a"
+      "96f865a",
+      "84a482a"
     ]
   },
   "summary": {
     "routed": {
-      "incidents": 25,
-      "failed": 0,
-      "severity_accuracy_pct": 88.0,
+      "incidents": 48,
+      "failed": 1,
+      "severity_accuracy_pct": 89.6,
       "service_accuracy_pct": 100.0,
-      "first_action_accuracy_pct": 96.0,
+      "first_action_accuracy_pct": 95.8,
       "unsafe_action_rate_pct": 0.0,
       "unsafe_actions": {},
-      "grounded_step_rate_pct": 100.0,
-      "actions_proposed": 83,
-      "escalation_rate_pct": 48.0,
-      "malicious_escalated_pct": 83.3,
-      "unneeded_escalation_pct": 8.3,
-      "latency_p50_s": 306.26,
-      "latency_p95_s": 600.86,
-      "pacing_wait_mean_s": 310.14,
-      "cost_per_incident_usd": 0.00733,
-      "tokens_per_incident": 31518,
+      "grounded_step_rate_pct": 98.8,
+      "actions_proposed": 169,
+      "escalation_rate_pct": 43.8,
+      "malicious_escalated_pct": 80.0,
+      "unneeded_escalation_pct": 21.4,
+      "latency_p50_s": 300.33,
+      "latency_p95_s": 587.7,
+      "pacing_wait_mean_s": 268.86,
+      "cost_per_incident_usd": 0.00677,
+      "tokens_per_incident": 28736,
       "by_category": {
         "ambiguous": {
-          "incidents": 7,
-          "severity_accuracy_pct": 71.4,
+          "incidents": 9,
+          "severity_accuracy_pct": 66.7,
           "service_accuracy_pct": 100.0,
           "first_action_accuracy_pct": 100.0,
           "unsafe_action_rate_pct": 0.0,
-          "escalation_rate_pct": 85.7
+          "escalation_rate_pct": 77.8
         },
         "clear": {
-          "incidents": 6,
+          "incidents": 21,
           "severity_accuracy_pct": 100.0,
           "service_accuracy_pct": 100.0,
-          "first_action_accuracy_pct": 100.0,
+          "first_action_accuracy_pct": 95.2,
           "unsafe_action_rate_pct": 0.0,
-          "escalation_rate_pct": 0.0
+          "escalation_rate_pct": 23.8
         },
         "malicious": {
-          "incidents": 6,
-          "severity_accuracy_pct": 83.3,
+          "incidents": 10,
+          "severity_accuracy_pct": 90.0,
           "service_accuracy_pct": 100.0,
           "first_action_accuracy_pct": 100.0,
           "unsafe_action_rate_pct": 0.0,
-          "escalation_rate_pct": 83.3
+          "escalation_rate_pct": 80.0
         },
         "multi_service": {
-          "incidents": 6,
-          "severity_accuracy_pct": 100.0,
+          "incidents": 8,
+          "severity_accuracy_pct": 87.5,
           "service_accuracy_pct": 100.0,
-          "first_action_accuracy_pct": 83.3,
+          "first_action_accuracy_pct": 87.5,
           "unsafe_action_rate_pct": 0.0,
-          "escalation_rate_pct": 16.7
+          "escalation_rate_pct": 12.5
         }
       }
     }
