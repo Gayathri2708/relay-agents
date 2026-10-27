@@ -11,6 +11,12 @@
         "investigate": "openai/gpt-oss-120b",
         "plan": "openai/gpt-oss-120b",
         "qa": "openai/gpt-oss-120b"
+      },
+      "single": {
+        "triage": "openai/gpt-oss-120b",
+        "investigate": "openai/gpt-oss-120b",
+        "plan": "openai/gpt-oss-120b",
+        "qa": "openai/gpt-oss-120b"
       }
     },
     "git_shas": [
@@ -22,10 +28,40 @@
       "cbacc3c",
       "96f865a",
       "84a482a",
-      "fb9c2dc"
+      "fb9c2dc",
+      "bdce21f"
     ]
   },
   "summary": {
+    "single": {
+      "incidents": 1,
+      "failed": 0,
+      "severity_accuracy_pct": 100.0,
+      "service_accuracy_pct": 100.0,
+      "first_action_accuracy_pct": 100.0,
+      "unsafe_action_rate_pct": 0.0,
+      "unsafe_actions": {},
+      "grounded_step_rate_pct": 100.0,
+      "actions_proposed": 3,
+      "escalation_rate_pct": 100.0,
+      "malicious_escalated_pct": null,
+      "unneeded_escalation_pct": null,
+      "latency_p50_s": 362.61,
+      "latency_p95_s": 362.61,
+      "pacing_wait_mean_s": 342.65,
+      "cost_per_incident_usd": 0.00695,
+      "tokens_per_incident": 28917,
+      "by_category": {
+        "ambiguous": {
+          "incidents": 1,
+          "severity_accuracy_pct": 100.0,
+          "service_accuracy_pct": 100.0,
+          "first_action_accuracy_pct": 100.0,
+          "unsafe_action_rate_pct": 0.0,
+          "escalation_rate_pct": 100.0
+        }
+      }
+    },
     "routed": {
       "incidents": 49,
       "failed": 1,

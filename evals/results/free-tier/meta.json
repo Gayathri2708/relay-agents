@@ -10,6 +10,12 @@
       "investigate": "openai/gpt-oss-120b",
       "plan": "openai/gpt-oss-120b",
       "qa": "openai/gpt-oss-120b"
+    },
+    "single": {
+      "triage": "openai/gpt-oss-120b",
+      "investigate": "openai/gpt-oss-120b",
+      "plan": "openai/gpt-oss-120b",
+      "qa": "openai/gpt-oss-120b"
     }
   },
   "git_shas": [
@@ -21,6 +27,7 @@
     "cbacc3c",
     "96f865a",
     "84a482a",
-    "fb9c2dc"
+    "fb9c2dc",
+    "bdce21f"
   ]
 }
