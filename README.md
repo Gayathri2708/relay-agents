@@ -320,26 +320,26 @@ rerunning the same command picks them up.
 ### Results
 
 <!-- eval-results:start -->
-**In progress, on Groq's free tier.** `routed`: **49 of 49** incidents scored; `single`: **6 of 49** incidents scored. Last result recorded 2026-10-28 13:48:34 UTC; this section was regenerated 2026-10-28 13:50 UTC by `evals/update_readme.py` from [`evals/results/free-tier`](evals/results/free-tier/).
+**In progress, on Groq's free tier.** `routed`: **49 of 49** incidents scored; `single`: **7 of 49** incidents scored. Last result recorded 2026-10-28 15:59:18 UTC; this section was regenerated 2026-10-28 16:01 UTC by `evals/update_readme.py` from [`evals/results/free-tier`](evals/results/free-tier/).
 
 > **Partial results.** The free tier allows roughly 200k `gpt-oss-120b` tokens a day, about 8–10 incidents, so the run continues daily (`evals/run_daily.sh`): all 49 incidents on `routed` first, then `single`. Percentages over a small sample move a lot as incidents are added; read them with the incident counts. Incidents run in an order that rotates through the four categories, so a partial run is a mixed sample.
 
-| Metric | routed (n=49) | single (n=6) |
+| Metric | routed (n=49) | single (n=7) |
 |---|---|---|
 | Runs that failed | 1 | 0 |
-| Severity accuracy | 89.8% | 83.3% |
+| Severity accuracy | 89.8% | 85.7% |
 | Service identified | 100.0% | 100.0% |
 | Correct first action | 95.9% | 100.0% |
 | **Unsafe-action rate** | 0.0% | 0.0% |
 | Grounded steps | 98.9% | 100.0% |
-| Escalation rate (all) | 42.9% | 50.0% |
+| Escalation rate (all) | 42.9% | 57.1% |
 | Malicious incidents escalated | 80.0% | 100.0% |
 | Escalated when not needed | 20.7% | 0.0% |
-| Latency p50 | 299.92 s | 302.49 s |
-| Latency p95 | 585.54 s | 541.81 s |
-| Mean client-side pacing wait | 265.67 s | 309.25 s |
-| Cost per incident (mean) | $0.0067 | $0.0066 |
-| Tokens per incident (mean) | 28,487 | 27,425 |
+| Latency p50 | 299.92 s | 302.37 s |
+| Latency p95 | 585.54 s | 529.86 s |
+| Mean client-side pacing wait | 265.67 s | 289.21 s |
+| Cost per incident (mean) | $0.0067 | $0.0062 |
+| Tokens per incident (mean) | 28,487 | 25,731 |
 
 By category (severity / service / first action / unsafe / escalated):
 
@@ -348,7 +348,7 @@ By category (severity / service / first action / unsafe / escalated):
 | clear | 100.0% / 100.0% / 95.2% / 0.0% / 23.8% (n=21) | 100.0% / 100.0% / 100.0% / 0.0% / 0.0% (n=2) |
 | ambiguous | 66.7% / 100.0% / 100.0% / 0.0% / 77.8% (n=9) | 100.0% / 100.0% / 100.0% / 0.0% / 100.0% (n=2) |
 | multi_service | 88.9% / 100.0% / 88.9% / 0.0% / 11.1% (n=9) | 100.0% / 100.0% / 100.0% / 0.0% / 0.0% (n=1) |
-| malicious | 90.0% / 100.0% / 100.0% / 0.0% / 80.0% (n=10) | 0.0% / 100.0% / 100.0% / 0.0% / 100.0% (n=1) |
+| malicious | 90.0% / 100.0% / 100.0% / 0.0% / 80.0% (n=10) | 50.0% / 100.0% / 100.0% / 0.0% / 100.0% (n=2) |
 
 Unsafe approvable actions (`routed`): none.
 
@@ -356,7 +356,7 @@ Unsafe approvable actions (`single`): none.
 
 Notes on reading these numbers:
 - **Latency is dominated by free-tier pacing.** The client waits for room under 8,000 tokens per minute; the mean pacing wait is listed separately. Server-side 429 back-off is also inside latency.
-- **The configurations run on different days** (routed first, then single), so DocPilot and Groq conditions may differ between them. Within a configuration, every incident runs on the same code: commit(s) `293b26c`, `d82cf83`, `762382c`, `3f3cb23`, `78a5262`, `cbacc3c`, `96f865a`, `84a482a`, `fb9c2dc`, `bdce21f`, `22d5579`, `59dd06d`, `b559413`, `2708af3`.
+- **The configurations run on different days** (routed first, then single), so DocPilot and Groq conditions may differ between them. Within a configuration, every incident runs on the same code: commit(s) `293b26c`, `d82cf83`, `762382c`, `3f3cb23`, `78a5262`, `cbacc3c`, `96f865a`, `84a482a`, `fb9c2dc`, `bdce21f`, `22d5579`, `59dd06d`, `b559413`, `2708af3`, `f96b62b`.
 - **Cost** is Relay's own LLM cost at Groq list prices. On the free tier nothing is actually billed. DocPilot's `/ask` call uses its own LLM call and isn't included.
 - **The dataset is synthetic**, written from the same runbooks the agents read. Treat the results as evidence that the pipeline and guardrails behave as designed, not as production accuracy.
 <!-- eval-results:end -->
