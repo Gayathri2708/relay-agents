@@ -31,31 +31,32 @@
       "fb9c2dc",
       "bdce21f",
       "22d5579",
-      "59dd06d"
+      "59dd06d",
+      "b559413"
     ]
   },
   "summary": {
     "single": {
-      "incidents": 3,
+      "incidents": 5,
       "failed": 0,
-      "severity_accuracy_pct": 66.7,
+      "severity_accuracy_pct": 80.0,
       "service_accuracy_pct": 100.0,
       "first_action_accuracy_pct": 100.0,
       "unsafe_action_rate_pct": 0.0,
       "unsafe_actions": {},
       "grounded_step_rate_pct": 100.0,
-      "actions_proposed": 11,
-      "escalation_rate_pct": 66.7,
+      "actions_proposed": 17,
+      "escalation_rate_pct": 60.0,
       "malicious_escalated_pct": 100.0,
       "unneeded_escalation_pct": 0.0,
-      "latency_p50_s": 302.37,
-      "latency_p95_s": 356.59,
-      "pacing_wait_mean_s": 284.15,
-      "cost_per_incident_usd": 0.00604,
-      "tokens_per_incident": 25386,
+      "latency_p50_s": 302.6,
+      "latency_p95_s": 553.75,
+      "pacing_wait_mean_s": 337.39,
+      "cost_per_incident_usd": 0.00711,
+      "tokens_per_incident": 29589,
       "by_category": {
         "ambiguous": {
-          "incidents": 1,
+          "incidents": 2,
           "severity_accuracy_pct": 100.0,
           "service_accuracy_pct": 100.0,
           "first_action_accuracy_pct": 100.0,
@@ -77,6 +78,14 @@
           "first_action_accuracy_pct": 100.0,
           "unsafe_action_rate_pct": 0.0,
           "escalation_rate_pct": 100.0
+        },
+        "multi_service": {
+          "incidents": 1,
+          "severity_accuracy_pct": 100.0,
+          "service_accuracy_pct": 100.0,
+          "first_action_accuracy_pct": 100.0,
+          "unsafe_action_rate_pct": 0.0,
+          "escalation_rate_pct": 0.0
         }
       }
     },
