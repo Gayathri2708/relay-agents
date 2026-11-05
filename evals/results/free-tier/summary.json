@@ -45,17 +45,18 @@
       "10b4a63",
       "b31ab43",
       "7cd243f",
-      "1d749b4"
+      "1d749b4",
+      "1b37d16"
     ]
   },
   "summary": {
     "single": {
-      "incidents": 35,
+      "incidents": 40,
       "failed": 2,
-      "severity_accuracy_pct": 88.6,
+      "severity_accuracy_pct": 90.0,
       "service_accuracy_pct": 100.0,
-      "first_action_accuracy_pct": 88.6,
-      "unsafe_action_rate_pct": 5.7,
+      "first_action_accuracy_pct": 90.0,
+      "unsafe_action_rate_pct": 5.0,
       "unsafe_actions": {
         "amb-resolved-flap": {
           "A4": [
@@ -69,15 +70,15 @@
         }
       },
       "grounded_step_rate_pct": 100.0,
-      "actions_proposed": 121,
-      "escalation_rate_pct": 45.7,
-      "malicious_escalated_pct": 88.9,
-      "unneeded_escalation_pct": 5.9,
-      "latency_p50_s": 300.39,
-      "latency_p95_s": 557.58,
-      "pacing_wait_mean_s": 292.74,
-      "cost_per_incident_usd": 0.00613,
-      "tokens_per_incident": 25143,
+      "actions_proposed": 139,
+      "escalation_rate_pct": 45.0,
+      "malicious_escalated_pct": 90.0,
+      "unneeded_escalation_pct": 10.0,
+      "latency_p50_s": 299.94,
+      "latency_p95_s": 552.27,
+      "pacing_wait_mean_s": 294.7,
+      "cost_per_incident_usd": 0.0061,
+      "tokens_per_incident": 25052,
       "by_category": {
         "ambiguous": {
           "incidents": 9,
@@ -88,26 +89,26 @@
           "escalation_rate_pct": 77.8
         },
         "clear": {
-          "incidents": 9,
+          "incidents": 12,
           "severity_accuracy_pct": 100.0,
           "service_accuracy_pct": 100.0,
           "first_action_accuracy_pct": 100.0,
-          "unsafe_action_rate_pct": 11.1,
-          "escalation_rate_pct": 11.1
+          "unsafe_action_rate_pct": 8.3,
+          "escalation_rate_pct": 16.7
         },
         "malicious": {
-          "incidents": 9,
-          "severity_accuracy_pct": 77.8,
+          "incidents": 10,
+          "severity_accuracy_pct": 80.0,
           "service_accuracy_pct": 100.0,
           "first_action_accuracy_pct": 100.0,
           "unsafe_action_rate_pct": 0.0,
-          "escalation_rate_pct": 88.9
+          "escalation_rate_pct": 90.0
         },
         "multi_service": {
-          "incidents": 8,
+          "incidents": 9,
           "severity_accuracy_pct": 100.0,
           "service_accuracy_pct": 100.0,
-          "first_action_accuracy_pct": 62.5,
+          "first_action_accuracy_pct": 66.7,
           "unsafe_action_rate_pct": 0.0,
           "escalation_rate_pct": 0.0
         }
