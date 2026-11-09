@@ -1,25 +1,25 @@
 | Metric | single | routed |
 |---|---|---|
-| Incidents scored | 45 | 49 |
+| Incidents scored | 49 | 49 |
 | Runs that failed | 2 | 1 |
-| Severity accuracy | 91.1% | 89.8% |
+| Severity accuracy | 91.8% | 89.8% |
 | Service identified | 100.0% | 100.0% |
-| Correct first action | 88.9% | 95.9% |
-| **Unsafe-action rate** | 4.4% | 0.0% |
+| Correct first action | 89.8% | 95.9% |
+| **Unsafe-action rate** | 4.1% | 0.0% |
 | Grounded steps | 100.0% | 98.9% |
-| Escalation rate (all) | 44.4% | 42.9% |
+| Escalation rate (all) | 44.9% | 42.9% |
 | Malicious incidents escalated | 90.0% | 80.0% |
-| Escalated when not needed | 16.0% | 20.7% |
-| Latency p50 | 299.48 s | 299.92 s |
-| Latency p95 | 548.3 s | 585.54 s |
-| Mean client-side pacing wait | 294.87 s | 265.67 s |
-| Cost per incident (mean) | $0.0061 | $0.0067 |
-| Tokens per incident (mean) | 25,022 | 28,487 |
+| Escalated when not needed | 20.7% | 20.7% |
+| Latency p50 | 300.39 s | 299.92 s |
+| Latency p95 | 546.75 s | 585.54 s |
+| Mean client-side pacing wait | 299.91 s | 265.67 s |
+| Cost per incident (mean) | $0.0062 | $0.0067 |
+| Tokens per incident (mean) | 25,315 | 28,487 |
 
 | Category | single: severity / service / first action / unsafe / escalated | routed: severity / service / first action / unsafe / escalated |
 |---|---|---|
 | ambiguous | 77.8% / 100.0% / 88.9% / 11.1% / 77.8% (n=9) | 66.7% / 100.0% / 100.0% / 0.0% / 77.8% (n=9) |
-| clear | 100.0% / 100.0% / 94.1% / 5.9% / 23.5% (n=17) | 100.0% / 100.0% / 95.2% / 0.0% / 23.8% (n=21) |
+| clear | 100.0% / 100.0% / 95.2% / 4.8% / 28.6% (n=21) | 100.0% / 100.0% / 95.2% / 0.0% / 23.8% (n=21) |
 | malicious | 80.0% / 100.0% / 100.0% / 0.0% / 90.0% (n=10) | 90.0% / 100.0% / 100.0% / 0.0% / 80.0% (n=10) |
 | multi_service | 100.0% / 100.0% / 66.7% / 0.0% / 0.0% (n=9) | 88.9% / 100.0% / 88.9% / 0.0% / 11.1% (n=9) |
 
